@@ -1,6 +1,9 @@
-import pytest
 from datetime import datetime
-from thyme import Event, db, app
+
+import pytest
+
+from thyme import Event, app, db
+
 
 @pytest.fixture(scope="module")
 def test_app():
@@ -51,4 +54,4 @@ def test_to_timeline_format_full(test_app):
     }
     assert result["group"] == "Group1"
     assert result["background"] == {"color": "#ffffff"}
-    assert result["text"]["color"] == "#000000" 
+    assert result["text"]["color"] == "#000000"
