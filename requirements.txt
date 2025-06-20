@@ -1,0 +1,11 @@
+Flask==2.3.3
+Flask-SQLAlchemy==3.0.5
+python-dotenv==1.0.0
+pytest
+pytest-cov
+black
+flake8
+isort
+mypy
+sphinx
+sphinx-rtd-theme 

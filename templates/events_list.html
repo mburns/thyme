@@ -1,0 +1,41 @@
+{% if events %}
+<div class="events-list">
+    {% for event in events %}
+    <div class="event-card">
+        <div class="event-header">
+            <h3>{{ event.title }}</h3>
+            <button class="btn btn-danger btn-sm" 
+                    hx-delete="/api/events/{{ event.id }}" 
+                    hx-target="#events-list" 
+                    hx-swap="outerHTML"
+                    hx-confirm="Are you sure you want to delete this event?">
+                Delete
+            </button>
+        </div>
+        
+        <div class="event-details">
+            <p><strong>Date:</strong> {{ event.start_date.strftime('%B %d, %Y') }}</p>
+            {% if event.end_date %}
+            <p><strong>End Date:</strong> {{ event.end_date.strftime('%B %d, %Y') }}</p>
+            {% endif %}
+            
+            {% if event.description %}
+            <p><strong>Description:</strong> {{ event.description }}</p>
+            {% endif %}
+            
+            {% if event.group %}
+            <p><strong>Group:</strong> {{ event.group }}</p>
+            {% endif %}
+            
+            {% if event.media_url %}
+            <p><strong>Media:</strong> <a href="{{ event.media_url }}" target="_blank">{{ event.media_url }}</a></p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="no-events">
+    <p>No events found. Add your first event using the form above!</p>
+</div>
+{% endif %} 

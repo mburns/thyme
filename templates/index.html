@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Timeline - Timeline App{% endblock %}
+
+{% block content %}
+<div class="timeline-container">
+    <div id="timeline-embed"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Fetch timeline data from our API
+    fetch('/api/timeline')
+        .then(response => response.json())
+        .then(data => {
+            // Initialize TimelineJS3
+            window.timeline = new TL.Timeline('timeline-embed', data, {
+                width: '100%',
+                height: '600px',
+                font: 'Bevan-PotanoSans',
+                scale: 'human',
+                layout: 'landscape'
+            });
+        })
+        .catch(error => {
+            console.error('Error loading timeline:', error);
+            document.getElementById('timeline-embed').innerHTML = 
+                '<div class="error-message">Error loading timeline data. Please try again later.</div>';
+        });
+});
+</script>
+{% endblock %} 
