@@ -167,3 +167,5 @@ playwright/.cache/
 
 # Husky
 .husky/_
+
+./trailbase
