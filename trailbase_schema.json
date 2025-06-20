@@ -1,0 +1,396 @@
+{
+  "tables": {
+    "people": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "name": {
+          "type": "text",
+          "not_null": true
+        },
+        "wikidata_id": {
+          "type": "text",
+          "unique": true
+        },
+        "birth_date": {
+          "type": "datetime"
+        },
+        "death_date": {
+          "type": "datetime"
+        },
+        "occupation": {
+          "type": "text"
+        },
+        "nationality": {
+          "type": "text"
+        },
+        "image_url": {
+          "type": "text"
+        },
+        "description": {
+          "type": "text"
+        },
+        "created_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": [
+        {
+          "name": "idx_people_name",
+          "columns": ["name"]
+        },
+        {
+          "name": "idx_people_wikidata",
+          "columns": ["wikidata_id"]
+        }
+      ]
+    },
+    "awards": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "name": {
+          "type": "text",
+          "not_null": true
+        },
+        "wikidata_id": {
+          "type": "text",
+          "unique": true
+        },
+        "category": {
+          "type": "text"
+        },
+        "description": {
+          "type": "text"
+        },
+        "image_url": {
+          "type": "text"
+        },
+        "created_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": [
+        {
+          "name": "idx_awards_name",
+          "columns": ["name"]
+        }
+      ]
+    },
+    "wars": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "name": {
+          "type": "text",
+          "not_null": true
+        },
+        "wikidata_id": {
+          "type": "text",
+          "unique": true
+        },
+        "start_date": {
+          "type": "datetime"
+        },
+        "end_date": {
+          "type": "datetime"
+        },
+        "description": {
+          "type": "text"
+        },
+        "image_url": {
+          "type": "text"
+        },
+        "created_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": [
+        {
+          "name": "idx_wars_name",
+          "columns": ["name"]
+        },
+        {
+          "name": "idx_wars_dates",
+          "columns": ["start_date", "end_date"]
+        }
+      ]
+    },
+    "inventions": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "name": {
+          "type": "text",
+          "not_null": true
+        },
+        "wikidata_id": {
+          "type": "text",
+          "unique": true
+        },
+        "invention_date": {
+          "type": "datetime"
+        },
+        "description": {
+          "type": "text"
+        },
+        "image_url": {
+          "type": "text"
+        },
+        "inventor_id": {
+          "type": "integer",
+          "foreign_key": {
+            "table": "people",
+            "column": "id"
+          }
+        },
+        "created_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": [
+        {
+          "name": "idx_inventions_name",
+          "columns": ["name"]
+        },
+        {
+          "name": "idx_inventions_inventor",
+          "columns": ["inventor_id"]
+        }
+      ]
+    },
+    "space_events": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "name": {
+          "type": "text",
+          "not_null": true
+        },
+        "wikidata_id": {
+          "type": "text",
+          "unique": true
+        },
+        "event_date": {
+          "type": "datetime"
+        },
+        "description": {
+          "type": "text"
+        },
+        "image_url": {
+          "type": "text"
+        },
+        "created_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": [
+        {
+          "name": "idx_space_events_name",
+          "columns": ["name"]
+        },
+        {
+          "name": "idx_space_events_date",
+          "columns": ["event_date"]
+        }
+      ]
+    },
+    "person_awards": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "person_id": {
+          "type": "integer",
+          "not_null": true,
+          "foreign_key": {
+            "table": "people",
+            "column": "id"
+          }
+        },
+        "award_id": {
+          "type": "integer",
+          "not_null": true,
+          "foreign_key": {
+            "table": "awards",
+            "column": "id"
+          }
+        },
+        "award_date": {
+          "type": "datetime"
+        },
+        "created_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": [
+        {
+          "name": "idx_person_awards_person",
+          "columns": ["person_id"]
+        },
+        {
+          "name": "idx_person_awards_award",
+          "columns": ["award_id"]
+        },
+        {
+          "name": "idx_person_awards_unique",
+          "columns": ["person_id", "award_id"],
+          "unique": true
+        }
+      ]
+    },
+    "person_wars": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "person_id": {
+          "type": "integer",
+          "not_null": true,
+          "foreign_key": {
+            "table": "people",
+            "column": "id"
+          }
+        },
+        "war_id": {
+          "type": "integer",
+          "not_null": true,
+          "foreign_key": {
+            "table": "wars",
+            "column": "id"
+          }
+        },
+        "role": {
+          "type": "text"
+        },
+        "created_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": [
+        {
+          "name": "idx_person_wars_person",
+          "columns": ["person_id"]
+        },
+        {
+          "name": "idx_person_wars_war",
+          "columns": ["war_id"]
+        },
+        {
+          "name": "idx_person_wars_unique",
+          "columns": ["person_id", "war_id"],
+          "unique": true
+        }
+      ]
+    },
+    "events": {
+      "columns": {
+        "id": {
+          "type": "integer",
+          "primary_key": true,
+          "auto_increment": true
+        },
+        "title": {
+          "type": "text",
+          "not_null": true
+        },
+        "description": {
+          "type": "text"
+        },
+        "start_date": {
+          "type": "datetime",
+          "not_null": true
+        },
+        "end_date": {
+          "type": "datetime"
+        },
+        "media_url": {
+          "type": "text"
+        },
+        "media_caption": {
+          "type": "text"
+        },
+        "media_credit": {
+          "type": "text"
+        },
+        "group": {
+          "type": "text"
+        },
+        "background_color": {
+          "type": "text"
+        },
+        "text_color": {
+          "type": "text"
+        },
+        "created_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        },
+        "updated_at": {
+          "type": "datetime",
+          "default": "CURRENT_TIMESTAMP"
+        }
+      },
+      "indexes": [
+        {
+          "name": "idx_events_title",
+          "columns": ["title"]
+        },
+        {
+          "name": "idx_events_dates",
+          "columns": ["start_date", "end_date"]
+        },
+        {
+          "name": "idx_events_group",
+          "columns": ["group"]
+        }
+      ]
+    }
+  }
+} 

@@ -7,15 +7,36 @@ name = "thyme"
 version = "0.1.0"
 description = "A beautiful timeline app using TimelineJS3, htmx, and SQLite."
 authors = [
-    { name = "Your Name", email = "your@email.com" }
+    { name = "Michael Burns", email = "michael@mirwin.net" }
+
 ]
 readme = "README.md"
 requires-python = ">=3.8"
+license = { text = "MIT" }
 dependencies = [
     "Flask==2.3.3",
     "Flask-SQLAlchemy==3.0.5",
     "python-dotenv==1.0.0"
 ]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "black",
+    "flake8",
+    "isort",
+    "mypy",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "requests"
+]
+
+[tool.setuptools.packages.find]
+include = ["thyme*"]
+
+[tool.setuptools.package-data]
+"*" = ["templates/*.html", "static/css/*.css"]
 
 [tool.black]
 line-length = 88
@@ -28,4 +49,4 @@ max-line-length = 88
 extend-ignore = ["E203", "W503"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"] 
+testpaths = ["tests"]

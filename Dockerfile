@@ -27,4 +27,4 @@ ENV FLASK_APP=thyme
 ENV FLASK_ENV=production
 
 # Run the app with Gunicorn
-CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "thyme:app"] 
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "thyme:app"]

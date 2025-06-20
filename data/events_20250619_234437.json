@@ -1,0 +1,548 @@
+[
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q133514351"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2024-08-13T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Paris Evergreen International Hotel incident"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "incident of Evergreen International Hotel"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q129257459"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2024-08-09T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "2024 Kiteezi landslide"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "garbage landslide in Kampala, Uganda"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q133245154"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1976-01-06T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "1976 Stanford, Kentucky alien abduction incident"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "alien abduction of three women"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q29025325"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1968-10-14T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "1968 Meckering earthquake"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "earthquake in 1968 in Western Australia"
+    },
+    "wikipediaUrl": {
+      "type": "literal",
+      "value": "https://en.wikipedia.org/wiki/1968_Meckering_earthquake"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q112876446"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1963-09-01T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Het 900 jarig bestaan van Heemskerk"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Events in Heemskerk"
+    },
+    "image": {
+      "type": "uri",
+      "value": "http://commons.wikimedia.org/wiki/Special:FilePath/Burgemeester%20H.%20Nielen%20e.a.%20op%20het%20bordes%20van%20het%20gemeentehuis%20t.g.v.%20het%20900%20jarig%20bestaan%20van%20Heemskerk.%201963%20-15.jpg"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q110298653"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2010-04-02T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "2010 Hor\u00e1ck\u00e1 Rally"
+    },
+    "image": {
+      "type": "uri",
+      "value": "http://commons.wikimedia.org/wiki/Special:FilePath/Hor%C3%A1cka%20rally%202010%20start%20point%20in%20T%C5%99eb%C3%AD%C4%8D%2C%20T%C5%99eb%C3%AD%C4%8D%20District.jpg"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4157150"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2001-04-14T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "NTV Affair"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "2001 takeover of NTV by Gazprom and the Russian government"
+    },
+    "wikipediaUrl": {
+      "type": "literal",
+      "value": "https://en.wikipedia.org/wiki/NTV_affair"
+    },
+    "image": {
+      "type": "uri",
+      "value": "http://commons.wikimedia.org/wiki/Special:FilePath/Vladimir%20Putin%2029%20January%202001-1.jpg"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q17887372"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2006-07-10T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "World Cup 2006: Zinedine Zidane won the Golden Ball award"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Wikinews article"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q122850272"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2022-03-20T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Ganar Kiyawa massacre"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "2022 mass killing in Zamfara, Nigeria"
+    },
+    "wikipediaUrl": {
+      "type": "literal",
+      "value": "https://en.wikipedia.org/wiki/Ganar_Kiyawa_massacre"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q112507438"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2022-06-06T00:00:00Z"
+    },
+    "itemLabel": {
+      "type": "literal",
+      "value": "Q112507438"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q4781956"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2012-04-30T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "April 2012 Idlib bombings"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "2012 Car bombing in Idlib"
+    },
+    "wikipediaUrl": {
+      "type": "literal",
+      "value": "https://en.wikipedia.org/wiki/April_2012_Idlib_bombings"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q124479466"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1975-04-23T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Occupation of \"Herdade Torre Bela\""
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q359288"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1968-01-01T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Yush\u014d disease"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "mass poisoning in Japan"
+    },
+    "wikipediaUrl": {
+      "type": "literal",
+      "value": "https://en.wikipedia.org/wiki/Yush%C5%8D_disease"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q28231436"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1975-07-08T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "1975 Bagan earthquake"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Earthquake in Myanmar"
+    },
+    "wikipediaUrl": {
+      "type": "literal",
+      "value": "https://en.wikipedia.org/wiki/1975_Bagan_earthquake"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q2477966"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2011-08-24T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "2011 Peru earthquake"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q55097034"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2018-05-01T00:00:00Z"
+    },
+    "itemLabel": {
+      "type": "literal",
+      "value": "Q55097034"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q108808076"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2020-01-14T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Germany Returns Three Paintings Once Owned by the Notorious Art Dealer Hildebrand Gurlitt to a Jewish Collector\u2019s Heirs"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "news article"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q11898968"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1963-01-09T00:00:00Z"
+    },
+    "itemLabel": {
+      "type": "literal",
+      "value": "Q11898968"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "explosion in Oulu, Finland on 9 January 1963"
+    },
+    "image": {
+      "type": "uri",
+      "value": "http://commons.wikimedia.org/wiki/Special:FilePath/Typen%20r%C3%A4j%C3%A4hdys%20Uuno%20Laukka3281.jpg"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q2835945"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1997-07-09T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "1997 Cariaco earthquake"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Earthquake in Venezuela"
+    },
+    "wikipediaUrl": {
+      "type": "literal",
+      "value": "https://en.wikipedia.org/wiki/1997_Cariaco_earthquake"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q3236011"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1941-09-10T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "1941 Van-Erci\u015f earthquake"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "earthquake in. eastern Turkey"
+    },
+    "wikipediaUrl": {
+      "type": "literal",
+      "value": "https://en.wikipedia.org/wiki/1941_Van%E2%80%93Erci%C5%9F_earthquake"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q17596955"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1907-11-25T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Cat\u00e0strofe ferrovi\u00e0ria de Riudecanyes del 1907"
+    },
+    "image": {
+      "type": "uri",
+      "value": "http://commons.wikimedia.org/wiki/Special:FilePath/Accident%20ferroviari%20a%20la%20Riera%20de%20Riudecanyes%20-%201907%20a.jpg"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q927194"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "1989-04-04T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "Polish Round Table Agreement"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "series of agreements between Poland and its trade unions in 1989"
+    },
+    "wikipediaUrl": {
+      "type": "literal",
+      "value": "https://en.wikipedia.org/wiki/Polish_Round_Table_Agreement"
+    },
+    "image": {
+      "type": "uri",
+      "value": "http://commons.wikimedia.org/wiki/Special:FilePath/Okr%C4%85g%C5%82y%20St%C3%B3%C5%82%20Pa%C5%82ac%20Prezydencki%20w%20Warszawie%202019.jpg"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q131581572"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2011-01-01T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "\u0160amajim 2011"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "th Festival of Jewish culture in T\u0159eb\u00ed\u010d, Czech Republic"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q59282119"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2018-11-28T00:00:00Z"
+    },
+    "itemLabel": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "2018 Hebei chemical plant explosion accident"
+    }
+  },
+  {
+    "item": {
+      "type": "uri",
+      "value": "http://www.wikidata.org/entity/Q112507433"
+    },
+    "pointInTime": {
+      "datatype": "http://www.w3.org/2001/XMLSchema#dateTime",
+      "type": "literal",
+      "value": "2022-06-07T00:00:00Z"
+    },
+    "itemLabel": {
+      "type": "literal",
+      "value": "Q112507433"
+    },
+    "itemDescription": {
+      "xml:lang": "en",
+      "type": "literal",
+      "value": "earthquake"
+    }
+  }
+]
