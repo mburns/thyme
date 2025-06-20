@@ -1,0 +1,12 @@
+{
+  "database": {
+    "path": "data/trailbase.db"
+  },
+  "server": {
+    "host": "localhost",
+    "port": 4000
+  },
+  "schema": {
+    "path": "trailbase_schema.json"
+  }
+} 

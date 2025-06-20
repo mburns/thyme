@@ -10,6 +10,8 @@ import sys
 import zipfile
 from pathlib import Path
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 
 def get_platform_info():
     """Get platform information for TrailBase download."""

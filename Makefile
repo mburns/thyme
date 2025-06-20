@@ -1,6 +1,6 @@
 # Makefile for Timeline App with TrailBase
 
-.PHONY: all run lint format test docs type-check clean install-dev develop init-db fetch-people fetch-events import-data update-data trailbase-start trailbase-stop trailbase-init trailbase-download
+.PHONY: all run lint format test docs type-check clean install-dev develop init-db fetch-people fetch-events import-data update-data trailbase-start trailbase-stop trailbase-init trailbase-download import-csv
 
 # Check if virtual environment is activated
 check-venv:
@@ -47,7 +47,23 @@ trailbase-start: check-venv
 
 # Stop TrailBase server (if running)
 trailbase-stop:
-	@pkill -f trailbase || echo "TrailBase not running"
+	@pkill -f trail || echo "TrailBase not running"
+
+# Import CSV data into TrailBase
+import-csv: check-venv
+	@if [ -z "$(CSV_FILE)" ]; then \
+		echo "Error: Please specify CSV_FILE=path/to/file.csv"; \
+		echo "Usage: make import-csv CSV_FILE=data/sample_people.csv"; \
+		echo "Optional: add DRY_RUN=1 for dry run mode"; \
+		exit 1; \
+	fi
+	@if [ "$(DRY_RUN)" = "1" ]; then \
+		echo "Running CSV import in DRY RUN mode..."; \
+		python scripts/import_people_csv.py $(CSV_FILE) --dry-run; \
+	else \
+		echo "Importing CSV data into TrailBase..."; \
+		python scripts/import_people_csv.py $(CSV_FILE); \
+	fi
 
 # Run the Flask application with TrailBase
 run: check-venv
@@ -80,13 +96,13 @@ type-check: check-venv
 
 # Data fetching and importing
 fetch-people: check-venv
-	python fetch_wikidata.py --type people --limit 25
+	python scripts/fetch_wikidata.py --type people --limit 25
 
 fetch-events: check-venv
-	python fetch_wikidata.py --type events --limit 25
+	python scripts/fetch_wikidata.py --type events --limit 25
 
 import-data: check-venv
-	python import_from_json.py
+	python scripts/import_from_json.py
 
 # Combined data workflow
 update-data: fetch-people fetch-events import-data
@@ -108,6 +124,7 @@ help:
 	@echo "  trailbase-init    - Initialize TrailBase configuration"
 	@echo "  trailbase-start   - Start TrailBase server"
 	@echo "  trailbase-stop    - Stop TrailBase server"
+	@echo "  import-csv        - Import CSV data into TrailBase"
 	@echo "  run               - Run the Flask application with TrailBase"
 	@echo "  run-legacy        - Run the legacy Flask application"
 	@echo "  lint              - Run flake8 linting"
@@ -127,6 +144,10 @@ help:
 	@echo "  3. make trailbase-start    - Start TrailBase server"
 	@echo "  4. make update-data        - Fetch and import data"
 	@echo "  5. make run                - Run Flask app with TrailBase"
+	@echo ""
+	@echo "CSV Import Usage:"
+	@echo "  make import-csv CSV_FILE=data/sample_people.csv"
+	@echo "  make import-csv CSV_FILE=data/sample_people.csv DRY_RUN=1"
 	@echo ""
 	@echo "Remember to activate your virtual environment first:"
 	@echo "  source venv/bin/activate" 
