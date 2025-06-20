@@ -55,8 +55,7 @@ Run all style checks with:
 
 .. code-block:: bash
 
-   make format
-   make lint
+   isort . && black .
 
 Testing
 -------
