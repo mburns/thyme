@@ -1,0 +1,62 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+cors_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+[database]
+path = "./data/thyme.db"
+migrations_path = "./migrations"
+
+[auth]
+jwt_secret = "your-super-secret-jwt-key-change-this-in-production"
+jwt_expiry = 3600
+refresh_token_expiry = 2592000
+
+[admin]
+enabled = true
+path = "/admin"
+email = "admin@localhost"
+password = "secret"
+
+[[tables]]
+name = "users"
+schema = """
+CREATE TABLE users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE NOT NULL,
+    name TEXT,
+    avatar_url TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+[[tables]]
+name = "tasks"
+schema = """
+CREATE TABLE tasks (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT,
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed')),
+    priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+    due_date DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+"""
+
+[[tables]]
+name = "categories"
+schema = """
+CREATE TABLE categories (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    color TEXT DEFAULT '#3B82F6',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+""" 
