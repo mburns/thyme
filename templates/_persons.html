@@ -1,0 +1,13 @@
+<!-- Renders the main details for a person -->
+{% if data %}
+    <h1>{{ data.primaryName }}</h1>
+    <p>
+        Born: {{ data.birthYear or 'N/A' }}
+        {% if data.deathYear and data.deathYear != 'None' %}
+            | Died: {{ data.deathYear }}
+        {% endif %}
+    </p>
+    <p><strong>Profession:</strong> {{ data.primaryProfession }}</p>
+{% else %}
+    <p>Person not found.</p>
+{% endif %} 

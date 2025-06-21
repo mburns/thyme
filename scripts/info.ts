@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+
+console.log("Thyme - IMDB Data Browser");
+console.log("=========================");
+console.log("Version: 0.1.0");
+console.log("Language: TypeScript/Node.js");
+console.log("Database: SQLite");
+console.log("Framework: TrailBase");
+console.log("");
+console.log("Scripts:");
+console.log("  - scripts/import-imdb.ts: Data import script (TypeScript)");
+console.log("  - scripts/build.ts: Static site builder (TypeScript)");
+console.log("  - scripts/test.ts: Test runner (TypeScript)");
+console.log("  - scripts/sql-queries.ts: SQL query loader (TypeScript)");
+console.log("");
+console.log("Directories:");
+console.log("  - templates/: HTML templates");
+console.log("  - static/: CSS, JS, and images");
+console.log("  - scripts/: TypeScript scripts");
+console.log("  - sql/: SQL query files");
+console.log("  - traildepot/: TrailBase configuration");
+console.log("  - data/: IMDB datasets (downloaded automatically)");
+console.log("  - dist/: Built static site (generated)");
+console.log("");
+console.log("Modern Features:");
+console.log("  - TypeScript for type safety");
+console.log("  - ES modules for modern JavaScript");
+console.log("  - npm scripts for task automation");
+console.log("  - ESLint and Prettier for code quality");
+console.log("  - Better SQLite integration");
+console.log("  - Modern async/await patterns");

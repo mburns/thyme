@@ -1,0 +1,144 @@
+{% extends "_base.html" %}
+
+{% block title %}Title Details | Thyme IMDB{% endblock %}
+
+{% block content %}
+<div x-data="{
+    id: window.location.hash.substring(1),
+    details: null,
+    principals: [],
+    episodes: [],
+    isLoading: true,
+
+    fetchDetails() {
+        fetch(`/api/records/v1/v_title_details/${this.id}`)
+            .then(res => res.json())
+            .then(data => {
+                this.details = data;
+                if (this.details.titleType === 'tvSeries') {
+                    this.fetchEpisodes();
+                }
+            });
+    },
+
+    fetchPrincipals() {
+        const url = `/api/records/v1/v_title_principals?filter[title_id][$eq]=${this.id}&order=ordering`;
+        fetch(url)
+            .then(res => res.json())
+            .then(data => { this.principals = data.records; });
+    },
+
+    fetchEpisodes() {
+        const url = `/api/records/v1/v_title_episodes_by_season?filter[parent_title_id][$eq]=${this.id}`;
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                // Group episodes by season
+                const seasons = {};
+                data.records.forEach(ep => {
+                    const seasonNum = ep.seasonNumber || 'Unknown';
+                    if (!seasons[seasonNum]) {
+                        seasons[seasonNum] = [];
+                    }
+                    seasons[seasonNum].push(ep);
+                });
+                this.episodes = Object.entries(seasons).sort(([a], [b]) => a - b);
+            });
+    }
+}" x-init="
+    fetchDetails();
+    fetchPrincipals();
+    isLoading = false;
+">
+
+    <p x-show="isLoading">Loading details...</p>
+
+    <template x-if="details">
+        <div>
+            <!-- Main Title Details -->
+            <h1>
+                <span x-text="details.primaryTitle"></span>
+                <span class="subtle" x-show="details.primaryTitle !== details.originalTitle && details.originalTitle" x-text="'(' + details.originalTitle + ')'"></span>
+            </h1>
+
+            <div class="details-grid">
+                <div>
+                    <p><strong>Type:</strong> <span x-text="details.titleType"></span></p>
+                    <p>
+                        <strong>Year:</strong> <span x-text="details.startYear"></span>
+                        <span x-show="details.endYear && details.endYear !== details.startYear" x-text="'- ' + details.endYear"></span>
+                    </p>
+                    <p><strong>Runtime:</strong> <span x-text="details.runtimeMinutes + ' minutes'"></span></p>
+                    <p><strong>Genres:</strong> <span x-html="details.genres ? details.genres.split(',').map(g => `<a href='/genres.html?genre=${g.trim()}'>${g.trim()}</a>`).join(', ') : ''"></span></p>
+                    <p x-show="details.isAdult"><strong>Adult:</strong> Yes</p>
+                </div>
+                <div class="rating-box">
+                    <h3>Rating</h3>
+                    <template x-if="details.averageRating && details.numVotes">
+                        <div>
+                            <p class="rating-score"><strong x-text="details.averageRating.toFixed(1)"></strong> / 10</p>
+                            <p class="rating-votes" x-text="'(' + details.numVotes.toLocaleString() + ' votes)'"></p>
+                        </div>
+                    </template>
+                    <template x-if="!details.averageRating || !details.numVotes">
+                        <p>Not yet rated.</p>
+                    </template>
+                </div>
+            </div>
+
+            <!-- Cast & Crew List -->
+            <div class="principals-section" x-show="principals.length > 0">
+                <h2>Cast & Crew</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Role</th>
+                            <th>Characters</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="p in principals" :key="p.person_id + '-' + p.ordering">
+                            <tr>
+                                <td><a :href="'/person.html#' + p.person_id" x-text="p.primaryName"></a></td>
+                                <td x-text="p.category.replace('_', ' ') + (p.job ? ' (' + p.job.replace('_', ' ') + ')' : '')" class="capitalize"></td>
+                                <td x-text="JSON.parse(p.characters || '[]').join(', ')"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Episode List -->
+            <div class="episodes-section" x-show="details.titleType === 'tvSeries' && episodes.length > 0">
+                <h2>Episodes</h2>
+                <template x-for="[season, items] in episodes" :key="season">
+                    <div class="season-group">
+                        <h3 x-text="'Season ' + season"></h3>
+                        <table>
+                           <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Title</th>
+                                    <th>Year</th>
+                                    <th>Runtime</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <template x-for="ep in items" :key="ep.episode_title_id">
+                                    <tr>
+                                        <td x-text="ep.episodeNumber"></td>
+                                        <td><a :href="'/title.html#' + ep.episode_title_id" x-text="ep.episode_title"></a></td>
+                                        <td x-text="ep.episode_year"></td>
+                                        <td x-text="ep.episode_runtime + ' min'"></td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </template>
+</div>
+{% endblock %}

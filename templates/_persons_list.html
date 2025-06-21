@@ -1,0 +1,8 @@
+<!-- Renders a list of persons for a table body -->
+{% for person in data.items %}
+<tr>
+    <td><a href="/person.html#{{ person.id }}">{{ person.primaryName }}</a></td>
+    <td>{{ person.primaryProfession }}</td>
+    <td>{{ person.birthYear }}</td>
+</tr>
+{% endfor %} 

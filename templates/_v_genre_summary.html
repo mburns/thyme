@@ -1,0 +1,15 @@
+<ul class="genre-list">
+{% for item in data %}
+  <li>
+    <a href="#"
+       hx-get="/v_title_details?genres=like.*{{ item.genre }}.*&_sort=-numVotes"
+       hx-target="#title-list"
+       hx-swap="innerHTML"
+       hx-indicator="#title-list"
+       _="on htmx:afterRequest set #title-list-header.innerHTML to 'Top 50 Titles for {{ item.genre }}'"
+       >
+      {{ item.genre }} <span>({{ "{:,}".format(item.title_count) }})</span>
+    </a>
+  </li>
+{% endfor %}
+</ul>

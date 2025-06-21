@@ -1,0 +1,25 @@
+<!-- Renders the filmography list for a person -->
+{% if data and data.items %}
+    <table>
+        <thead>
+            <tr>
+                <th>Year</th>
+                <th>Title</th>
+                <th>Role</th>
+                <th>Characters</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for title in data.items %}
+            <tr>
+                <td>{{ title.startYear }}</td>
+                <td><a href="/title.html#{{ title.title_id }}">{{ title.primaryTitle }}</a></td>
+                <td>{{ title.category }}</td>
+                <td>{{ title.characters | replace('["', '') | replace('"]', '') | replace('","', ', ') }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No filmography available.</p>
+{% endif %} 

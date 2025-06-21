@@ -1,0 +1,15 @@
+<div>
+    <table>
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Year</th>
+                <th>Type</th>
+                <th>Genres</th>
+            </tr>
+        </thead>
+        <tbody hx-get="/api/records/v1/v_simple_titles&count=true" hx-trigger="load" hx-swap="innerHTML">
+            <tr><td colspan="4">Loading movies...</td></tr>
+        </tbody>
+    </table>
+</div>

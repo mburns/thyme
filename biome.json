@@ -1,0 +1,33 @@
+{
+  "$schema": "https://biomejs.dev/schemas/biome.schema.json",
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 80,
+    "bracketSpacing": true,
+    "bracketSameLine": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "files": {
+    "includes": [
+      "**/*.{js,ts,tsx,json,md}",
+      "!traildepot/trailbase.js",
+      "!traildepot/trailbase.d.ts",
+      "!dist/**/*",
+      "!node_modules/**/*",
+      "!.mypy_cache/**/*",
+      "!venv/**/*"
+    ],
+    "ignoreUnknown": false
+  },
+  "vcs": {
+    "useIgnoreFile": true
+  }
+}

@@ -1,0 +1,66 @@
+repos:
+  # Shell script linting and formatting
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: v0.9.0
+    hooks:
+      - id: shellcheck
+        args: [--severity=warning]
+        exclude: ^(temp_import|dist)/
+
+  # Shell script formatting with shfmt
+  - repo: https://github.com/mvdan/sh
+    rev: v3.6.0
+    hooks:
+      - id: shfmt
+        args: ["-i", "2", "-ci"]
+        exclude: ^(temp_import|dist)/
+
+  # YAML formatting
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.0.3
+    hooks:
+      - id: prettier
+        types: [yaml, yml, json]
+        exclude: ^(temp_import|dist)/
+
+  # Trailing whitespace and end-of-file fixes
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-ast
+      - id: debug-statements
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.35.0
+    hooks:
+      - id: markdownlint
+        args: [--fix]
+        exclude: ^(temp_import|dist)/
+
+  # SQL formatting (for migration files)
+  - repo: https://github.com/sqlfluff/sqlfluff
+    rev: 2.1.4
+    hooks:
+      - id: sqlfluff-lint
+        args: [--dialect, sqlite]
+        exclude: ^(temp_import|dist)/
+
+  # Check for shell script best practices
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.4.0
+    hooks:
+      - id: check-executables-have-shebangs
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=1000'] 
