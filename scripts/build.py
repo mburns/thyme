@@ -33,7 +33,7 @@ def build():
         "short.html",
         "video.html",
         "videogame.html",
-        "timeline.html",
+        # "timeline.html",
         "tv.html",
         "search.html",
     ]
