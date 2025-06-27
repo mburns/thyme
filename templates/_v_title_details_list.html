@@ -1,0 +1,9 @@
+<!-- Renders a list of titles for a table body -->
+{% for movie in data.items %}
+<tr>
+    <td><a href="/title.html#{{ movie.id }}">{{ movie.primaryTitle }}</a></td>
+    <td>{{ movie.startYear }}</td>
+    <td>{{ movie.titleType }}</td>
+    <td>{{ movie.genres }}</td>
+</tr>
+{% endfor %} 

@@ -1,0 +1,24 @@
+<!-- Renders the episode list for a TV series -->
+{% if data and data.items %}
+<h2>Episodes</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>#</th>
+                <th>Title</th>
+                <th>Year</th>
+                <th>Runtime</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for ep in data.items %}
+            <tr>
+                <td>S{{ ep.seasonNumber }}E{{ ep.episodeNumber }}</td>
+                <td><a href="/title.html#{{ ep.episode_title_id }}">{{ ep.episode_title }}</a></td>
+                <td>{{ ep.episode_year }}</td>
+                <td>{{ ep.episode_runtime }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% endif %} 

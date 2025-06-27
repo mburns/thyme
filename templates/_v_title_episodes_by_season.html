@@ -1,0 +1,39 @@
+{% if data|length > 0 %}
+  {% for season, items in data | groupby('seasonNumber') %}
+    <div class="season-group">
+      <h3>
+        {% if season %}
+          Season {{ season }}
+        {% else %}
+          Specials / Unknown Season
+        {% endif %}
+      </h3>
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Title</th>
+            <th>Year</th>
+            <th>Runtime</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for episode in items %}
+            <tr>
+              <td>{{ episode.episodeNumber }}</td>
+              <td>
+                <a href="/title.html#{{ episode.episode_title_id }}">
+                  {{ episode.episode_title }}
+                </a>
+              </td>
+              <td>{{ episode.episode_year }}</td>
+              <td>{{ episode.episode_runtime }} min</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endfor %}
+{% else %}
+  <p>No episode data found for this series.</p>
+{% endif %} 

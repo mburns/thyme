@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# Simple commit message validation
+# You can enhance this with commitlint if desired
+commit_msg=$(cat "$1")
+
+# Check if commit message follows conventional format
+if ! echo "$commit_msg" | grep -qE "^(feat|fix|docs|style|refactor|test|chore)(\(.+\))?: .+"; then
+  echo "❌ Commit message should follow conventional format: type(scope): description"
+  echo "   Examples:"
+  echo "   - feat: add new search functionality"
+  echo "   - fix(auth): resolve login issue"
+  echo "   - docs: update README"
+  exit 1
+fi
+
+echo "✅ Commit message format is valid" 

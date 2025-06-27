@@ -1,0 +1,80 @@
+{% extends "_base.html" %}
+
+{% block title %}Video Games | Thyme IMDB{% endblock %}
+
+{% block content %}
+<div x-data="{
+    records: [],
+    isLoading: false,
+    cursor: null,
+    isInitialLoad: true,
+    canLoadMore: true,
+    totalCount: 0,
+    loadedCount: 0,
+
+    async fetchData() {
+        this.isLoading = true;
+        let url = `/api/records/v1/v_title_details?filter[titleType][$eq]=videoGame&order=-startYear&count=true`;
+        if (this.cursor) {
+            url += `&cursor=${this.cursor}`;
+        }
+
+        try {
+            const response = await fetch(url);
+            const data = await response.json();
+
+            this.records.push(...data.records);
+            this.loadedCount = this.records.length;
+            this.isInitialLoad = false;
+            this.isLoading = false;
+            this.totalCount = data.total_count || 0;
+
+            if (data.records.length > 0) {
+                this.cursor = data.records[data.records.length - 1].id;
+                this.canLoadMore = data.records.length === 50;
+                console.log('Cursor updated to:', this.cursor);
+            } else {
+                this.canLoadMore = false;
+            }
+        } catch (error) {
+            console.error('Error fetching data:', error);
+            this.isLoading = false;
+        }
+    }
+}" x-init="fetchData()">
+
+    <h1>Video Games <span x-show="totalCount > 0" x-text="`(${totalCount.toLocaleString()})`"></span></h1>
+
+    <p x-show="isInitialLoad && isLoading">Loading video games...</p>
+
+    <template x-if="!isInitialLoad">
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Start Year</th>
+                    <th>Runtime</th>
+                    <th>Genres</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="r in records" :key="r.id">
+                    <tr>
+                        <td><a :href="'/title.html#' + r.id" x-text="r.primaryTitle"></a></td>
+                        <td x-text="r.startYear || ''"></td>
+                        <td x-text="r.runtimeMinutes ? r.runtimeMinutes + ' min' : ''"></td>
+                        <td x-html="r.genres ? r.genres.split(',').map(g => `<a href='/genres.html?genre=${g.trim()}'>${g.trim()}</a>`).join(', ') : ''"></td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </template>
+
+    <div style="text-align: center; margin-top: 20px;">
+        <p x-show="loadedCount > 0" x-text="`Loaded ${loadedCount.toLocaleString()} of ${totalCount.toLocaleString()} video games`"></p>
+        <button @click="fetchData()" x-show="canLoadMore && !isLoading" class="load-more">Load More</button>
+        <p x-show="isLoading && !isInitialLoad">Loading...</p>
+        <p x-show="!canLoadMore && records.length > 0">All video games loaded.</p>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,101 @@
+{% extends "_base.html" %}
+
+{% block content %}
+<style>
+    .two-column-layout { display: grid; grid-template-columns: 1fr 3fr; gap: 2rem; }
+    .genre-list { list-style: none; padding: 0; margin: 0; max-height: 80vh; overflow-y: auto; }
+    .genre-list li a { display: block; padding: 8px; text-decoration: none; }
+    .genre-list li a:hover { background-color: #333; }
+    .genre-list li a.active { font-weight: bold; color: var(--accent-color); }
+</style>
+
+<h1>Genres</h1>
+
+<div class="two-column-layout" x-data="{
+    genres: [],
+    titles: [],
+    selectedGenre: null,
+    isLoadingGenres: true,
+    isLoadingTitles: false,
+    init() {
+        this.fetchGenres();
+        const urlParams = new URLSearchParams(window.location.search);
+        const genreFromUrl = urlParams.get('genre');
+        if (genreFromUrl) {
+            this.fetchTitles(genreFromUrl);
+        }
+    },
+    fetchGenres() {
+        this.isLoadingGenres = true;
+        fetch('/api/records/v1/v_genre_summary')
+            .then(res => res.json())
+            .then(data => {
+                this.genres = data.records;
+                this.isLoadingGenres = false;
+            });
+    },
+    fetchTitles(genre) {
+        this.selectedGenre = genre;
+        this.isLoadingTitles = true;
+        this.titles = [];
+        const url = `/api/records/v1/v_title_details?filter[genres][$like]=%${genre}%&order=-numVotes`;
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                this.titles = data.records;
+                this.isLoadingTitles = false;
+            });
+    }
+}" x-init="init()">
+
+    <!-- Left Column: Genre List -->
+    <div>
+        <h3>All Genres</h3>
+        <p x-show="isLoadingGenres">Loading genres...</p>
+        <template x-if="!isLoadingGenres">
+            <ul class="genre-list">
+                <template x-for="g in genres" :key="g.genre">
+                    <li>
+                        <a href="#"
+                           @click.prevent="fetchTitles(g.genre)"
+                           :class="{ 'active': selectedGenre === g.genre }"
+                           x-text="`${g.genre} (${g.title_count.toLocaleString()})`">
+                        </a>
+                    </li>
+                </template>
+            </ul>
+        </template>
+    </div>
+
+    <!-- Right Column: Title List -->
+    <div>
+        <h3 x-text="selectedGenre ? `Top 50 Titles for ${selectedGenre}` : 'Titles'"></h3>
+        <p x-show="isLoadingTitles">Loading titles...</p>
+        <p x-show="!selectedGenre && !isLoadingTitles">Select a genre to see the top titles.</p>
+
+        <template x-if="!isLoadingTitles && titles.length > 0">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Year</th>
+                        <th>Rating</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="t in titles" :key="t.id">
+                        <tr>
+                            <td><a :href="'/title.html#' + t.id" x-text="t.primaryTitle"></a></td>
+                            <td x-text="t.startYear"></td>
+                            <td x-text="t.averageRating ? t.averageRating.toFixed(1) : ''"></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </template>
+        <template x-if="!isLoadingTitles && titles.length === 0 && selectedGenre">
+             <p>No titles found for this genre.</p>
+        </template>
+    </div>
+</div>
+{% endblock %} 

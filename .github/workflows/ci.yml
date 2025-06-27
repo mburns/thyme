@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sqlite3 curl gunzip tree shellcheck
+    
+    - name: Check dependencies
+      run: |
+        echo "Checking required commands..."
+        command -v sqlite3 || { echo "❌ sqlite3 not found"; exit 1; }
+        command -v curl || { echo "❌ curl not found"; exit 1; }
+        command -v gunzip || { echo "❌ gunzip not found"; exit 1; }
+        command -v shellcheck || { echo "❌ shellcheck not found"; exit 1; }
+        echo "✅ All dependencies found"
+    
+    - name: Test shell scripts
+      run: |
+        # Test shell script syntax
+        shellcheck --version
+        shellcheck *.sh --severity=warning
+        
+        # Test if scripts are executable
+        test -x import_imdb_sqlite.sh
+        test -x build.sh
+    
+    - name: Test build process
+      run: |
+        # Test that build script works
+        ./build.sh
+        
+        # Verify dist directory was created
+        test -d dist
+        test -f dist/index.html
+    
+    - name: Test database operations
+      run: |
+        # Create a test database directory
+        mkdir -p traildepot/data
+        
+        # Test database creation (this would normally be done by TrailBase)
+        sqlite3 traildepot/data/test.db "CREATE TABLE test (id INTEGER PRIMARY KEY);"
+        
+        # Test that our import script can connect to database
+        sqlite3 traildepot/data/test.db "SELECT 1;"
+    
+    - name: Test directory structure
+      run: |
+        # Test required directories exist
+        test -d templates
+        test -d static
+        test -d traildepot/migrations
+        
+        # Test required files exist
+        test -f templates/index.html
+        test -f templates/_base.html
+        test -f static/style.css
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run ShellCheck
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y shellcheck
+        shellcheck --version
+        shellcheck *.sh --severity=warning
+
+  markdown:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Markdown lint
+      run: |
+        npm install -g markdownlint-cli
+        markdownlint "**/*.md" --fix
+
+  format:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install shfmt
+      run: |
+        wget -O shfmt https://github.com/mvdan/sh/releases/download/v3.6.0/shfmt_v3.6.0_linux_amd64
+        chmod +x shfmt
+        sudo mv shfmt /usr/local/bin/
+    
+    - name: Check shell script formatting
+      run: |
+        shfmt -d *.sh 

@@ -1,0 +1,29 @@
+<!-- Renders the cast & crew list for a title -->
+{% if data and data.items %}
+    <table>
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Job</th>
+                <th>Characters</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for p in data.items %}
+            <tr>
+                <td><a href="/person.html#{{ p.person_id }}">{{ p.primaryName }}</a></td>
+                <td>{{ p.category | replace('_', ' ') | title }}</td>
+                <td>{{ p.job | replace('_', ' ') | title }}</td>
+                <td>
+                    {% if p.characters and p.characters != '[""]' and p.characters != '[]' %}
+                        {{ p.characters | replace('["', '') | replace('"]', '') | replace('","', ', ') }}
+                    {% endif %}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% else %}
+    <p>No cast and crew information available for this title.</p>
+{% endif %} 
