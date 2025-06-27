@@ -29,7 +29,7 @@
             this.loadedCount = 0;
         }
         this.isLoading = true;
-        let url = `/api/records/v1/v_title_details?filter[titleType][$eq]=${this.selectedType}&order=-startYear&count=true`;
+        let url = `/api/records/v1/v_title_details?filter[titleType][$eq]=${this.selectedType}`;
         if (this.cursor) {
             url += `&cursor=${this.cursor}`;
         }
