@@ -59,7 +59,7 @@
       "biome check --write",
       "biome format --write"
     ],
-    "*.{js,jsx,json,md,yml,yaml}": [
+    "*.{js,jsx,json}": [
       "biome format --write"
     ]
   },

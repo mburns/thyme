@@ -86,4 +86,25 @@ record_apis: [{
   table_name: "v_title_details"
   acl_world: [READ]
   acl_authenticated: [READ]
+}, {
+  name: "sources"
+  table_name: "sources"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "entities"
+  table_name: "entities"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "events"
+  table_name: "events"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+  expand: ["entity_id", "source_id"]
+}, {
+  name: "v_events"
+  table_name: "v_events"
+  acl_world: [READ]
+  acl_authenticated: [READ]
 }]

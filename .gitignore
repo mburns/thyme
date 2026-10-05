@@ -45,6 +45,6 @@ data
 dist
 
 temp_import/
-
+__pycache__/
 
 node_modules/

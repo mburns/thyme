@@ -186,6 +186,41 @@ The project includes efficient data import scripts that:
 make import-data
 ```
 
+IMDB exports live in `data/imdb/`. The script downloads any that are missing.
+
+## 🕰️ Timeline Events
+
+Every dataset is a *source* that contributes *entities* (a person, a title, a
+team) and *events* attached to them. An event is an instant (a release, an
+award, a medal) or a span (a life, a career, a TV run) with an explicit date
+precision, so year-only dates are never mistaken for 1 January. The schema is
+in `traildepot/migrations/U1791237000__events.sql`; `v_events` is the
+flattened read model and `entities_fts` the name index.
+
+| Source | Files | Events |
+|---|---|---|
+| `imdb` | derived from the imported `titles`/`persons` tables | title releases and series runs (titles with at least 1000 votes), people's life spans |
+| `lahman` | `data/sports/baseball/*.csv` | player life and career spans, awards, All-Star games, Hall of Fame, franchise runs and World Series wins |
+| `olympics` | `data/sports/olympic_events/athlete_events.csv` | each Games, each athlete appearance, each medal |
+| `wikidata_age` | `data/wiki/AgeDataset-V*.csv` | 1.2M people's life spans with Wikidata QIDs and occupation |
+
+```bash
+make sources        # list sources, row counts, last sync, whether files changed
+make sync-events    # import every source whose files changed
+python3 scripts/ingest_events.py sync --force imdb --imdb-min-votes 500
+```
+
+Each sync fingerprints the source's files (path, size, mtime), skips the
+source if nothing changed, upserts rows by their stable per-source key,
+deletes rows the source no longer produces, and logs the run in
+`source_syncs`. Drop a newer file in place (for example `AgeDataset-V2.csv`)
+and the next `make sync-events` picks it up.
+
+To add a source, subclass `ingest.core.Source` in `scripts/ingest/sources/`,
+yield `Entity` and `Event` rows, and register it in `SOURCES`. Use the
+`wikidata_id` column wherever a QID is known; it is the join key between
+sources.
+
 ## 🎨 Customization
 
 ### Adding New Pages

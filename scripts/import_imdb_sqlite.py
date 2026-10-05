@@ -44,7 +44,7 @@ import time
 from sql_queries import queries
 
 # Configuration
-DATA_DIR: str = "data"
+DATA_DIR: str = os.path.join("data", "imdb")
 DB_PATH: str = os.path.join("traildepot", "data", "main.db")
 TEMP_DIR: str = "temp_import"
 IMDB_BASE_URL: str = "https://datasets.imdbws.com"

@@ -12,7 +12,10 @@ help:
 	@echo "  test         - Run tests and validation"
 	@echo "  test-search  - Test FTS5 search functionality"
 	@echo "  test-python  - Run Python unit tests"
+	@echo "  test-ingest  - Run timeline ingest unit tests"
 	@echo "  type-check   - Run Python type checking (requires mypy)"
+	@echo "  sources      - List timeline data sources and their sync state"
+	@echo "  sync-events  - Import timeline events from sources whose files changed"
 	@echo "  test-python-full - Run comprehensive Python tests"
 	@echo "  lint         - Run linting checks"
 	@echo "  format       - Format code"
@@ -135,6 +138,19 @@ import-data:
 	@echo "Importing IMDB data (optimized for memory usage)..."
 	@python3 scripts/import_imdb_sqlite.py
 	@echo "✅ Data import complete"
+
+# Timeline events: list sources and their last sync
+sources:
+	@python3 scripts/ingest_events.py list
+
+# Timeline events: import every source whose files changed (IMDB needs import-data first)
+sync-events:
+	@python3 scripts/ingest_events.py sync
+	@echo "✅ Timeline events synced"
+
+# Run timeline ingest unit tests
+test-ingest:
+	@python3 scripts/test_ingest_events.py
 
 # Import limited IMDB data for testing
 test-import:
