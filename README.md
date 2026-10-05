@@ -45,9 +45,9 @@ people by relevance.
   `titles` and `persons`
 - **Automatic Sync**: Database triggers keep both indexes up to date; the
   migration also rebuilds them from existing rows
-- **TrailBase API**: `GET /search` in `traildepot/scripts/search.ts` turns the
-  query into a safe FTS5 `MATCH` expression and paginates each type with
-  `page` and `limit` (max 100)
+- **TrailBase API**: `GET /search` in `wasm/src/search.ts` turns the query
+  into a safe FTS5 `MATCH` expression and paginates each type with `page` and
+  `limit` (max 100)
 - **Alpine.js Frontend**: Reactive search interface with debouncing
 
 ### Testing Search
@@ -95,13 +95,12 @@ curl "http://localhost:4000/search?q=hanks&titles=false"
    make setup-hooks
    ```
 
-4. **Start TrailBase once** to create the database and apply the migrations
+4. **Install TrailBase v0.34 or newer** and start it once to create the
+   database and apply the migrations
    ```bash
+   # https://github.com/trailbaseio/trailbase/releases
    trail run
    ```
-   This project targets TrailBase v0.14 (the `traildepot/scripts` JavaScript
-   runtime). Download a matching release from
-   https://github.com/trailbaseio/trailbase/releases.
 
 5. **Import IMDB data** (stop the server first, then start it again)
    ```bash
@@ -109,14 +108,16 @@ curl "http://localhost:4000/search?q=hanks&titles=false"
    make sync-events
    ```
 
-6. **Build the static site**
+6. **Build the custom endpoints and the static site**
    ```bash
-   yarn build:site
+   yarn install
+   make wasm          # compiles wasm/src into traildepot/wasm/component.wasm
+   yarn build:site    # renders templates/ into dist/
    ```
 
 7. **Serve the site and the API from one origin**
    ```bash
-   trail run --public-dir dist
+   trail run --public-dir dist     # or: make run
    ```
 
 Visit `http://localhost:4000` to see your IMDB browser. The pages call
@@ -224,7 +225,7 @@ sources.
 
 ### Timeline API
 
-`GET /timeline` (in `traildepot/scripts/timeline.ts`) returns events that
+`GET /timeline` (in `wasm/src/timeline.ts`) returns events that
 overlap a year range, with filters for `category`, `source`, `kind`, `span`
 and an entity-name substring `q`. Pass `anchor=<entity id>` to get every
 event's offset in years (and days, at day precision) from that entity's life,
@@ -240,8 +241,19 @@ curl -g "http://localhost:4000/timeline/density?from=1800&to=2020&bucket=10&sour
 
 ### SQLite features in use
 
-The database is plain SQLite, read by TrailBase's bundled build (3.49) and
-written by the Python ingest; everything below works in both.
+The database is plain SQLite, read by TrailBase's bundled build (3.53 in
+v0.34) and written by the Python ingest; everything below works in both.
+
+### Custom endpoints as a WASM component
+
+TrailBase runs custom code as WebAssembly components. The handlers live in
+`wasm/src/` as ordinary TypeScript against the `trailbase-wasm` SDK
+(`HttpHandler`, `HttpResponse`, `query`). `make wasm` bundles them with Vite,
+turns the bundle into a component with `jco componentize`, and copies it to
+`traildepot/wasm/component.wasm`, which TrailBase loads at startup. Editing a
+handler body needs a rebuild plus `kill -HUP <trail pid>`; adding or removing
+a route needs a restart. The pure parts (query builders, parsers) are unit
+tested with Jest outside the runtime.
 
 | Feature | Where |
 |---|---|

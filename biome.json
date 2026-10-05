@@ -21,6 +21,7 @@
       "!traildepot/trailbase.js",
       "!traildepot/trailbase.d.ts",
       "!dist/**/*",
+      "!wasm/dist/**/*",
       "!node_modules/**/*",
       "!.mypy_cache/**/*",
       "!venv/**/*"

@@ -16,6 +16,8 @@ help:
 	@echo "  type-check   - Run Python type checking (requires mypy)"
 	@echo "  sources      - List timeline data sources and their sync state"
 	@echo "  sync-events  - Import timeline events from sources whose files changed"
+	@echo "  wasm         - Build the WASM component with the custom endpoints"
+	@echo "  run          - Build component and site, then start TrailBase on one origin"
 	@echo "  test-python-full - Run comprehensive Python tests"
 	@echo "  lint         - Run linting checks"
 	@echo "  format       - Format code"
@@ -151,6 +153,16 @@ sync-events:
 # Run timeline ingest unit tests
 test-ingest:
 	@python3 scripts/test_ingest_events.py
+
+# Build the WASM component with the custom endpoints into traildepot/wasm
+wasm:
+	@yarn --silent wasm:build
+	@echo "✅ Component built: traildepot/wasm/component.wasm"
+
+# Build everything and start TrailBase serving the site and the API on one origin
+run: wasm
+	@yarn --silent build:site
+	trail run --public-dir dist
 
 # Import limited IMDB data for testing
 test-import:

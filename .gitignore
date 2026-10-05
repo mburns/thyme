@@ -37,6 +37,8 @@ trail
 traildepot/secrets
 traildepot/data
 traildepot/uploads
+traildepot/wasm
+wasm/dist
 traildepot/trailbase.d.ts
 traildepot/trailbase.js
 

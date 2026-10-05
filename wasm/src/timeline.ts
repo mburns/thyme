@@ -1,4 +1,10 @@
-import { addRoute, jsonHandler, parsePath, query } from "../trailbase.js";
+import { query } from "trailbase-wasm/db";
+import {
+  HttpHandler,
+  type HttpRequest,
+  HttpResponse,
+} from "trailbase-wasm/http";
+import { num, type Params, str } from "./values";
 
 /// Timeline API over the unified `events` table.
 ///
@@ -215,14 +221,6 @@ export function buildDensityQuery(
   return { sql, params };
 }
 
-function num(v: unknown): number | null {
-  return typeof v === "number" ? v : null;
-}
-
-function str(v: unknown): string | null {
-  return typeof v === "string" ? v : null;
-}
-
 function parseDetail(v: unknown): Record<string, unknown> | null {
   if (typeof v !== "string") {
     return null;
@@ -297,91 +295,100 @@ export function applyAnchor(events: TimelineEvent[], anchor: Anchor): void {
   }
 }
 
-addRoute(
-  "GET",
-  "/timeline",
-  jsonHandler(async (req) => {
-    const p = parsePath(req.uri).query;
-    const currentYear = new Date().getUTCFullYear();
-    const from = parseYear(p.get("from"), 1900);
-    const to = Math.max(from, parseYear(p.get("to"), currentYear));
-    const spanParam = p.get("span");
-    const q: TimelineQuery = {
+export async function timeline(req: HttpRequest): Promise<object> {
+  const currentYear = new Date().getUTCFullYear();
+  const from = parseYear(req.getQueryParam("from"), 1900);
+  const to = Math.max(from, parseYear(req.getQueryParam("to"), currentYear));
+  const spanParam = req.getQueryParam("span");
+  const q: TimelineQuery = {
+    from,
+    to,
+    categories: parseList(req.getQueryParam("category")),
+    sources: parseList(req.getQueryParam("source")),
+    kinds: parseList(req.getQueryParam("kind")),
+    span: spanParam === "1" ? true : spanParam === "0" ? false : null,
+    match: buildTrigramMatch(req.getQueryParam("q") ?? ""),
+    limit: parseBounded(
+      req.getQueryParam("limit"),
+      DEFAULT_LIMIT,
+      1,
+      MAX_LIMIT,
+    ),
+    offset: parseBounded(
+      req.getQueryParam("offset"),
+      0,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    ),
+  };
+
+  try {
+    const { sql, params } = buildEventsQuery(q);
+    const rows = await query(sql, params as Params);
+    const events = rows.map(rowToEvent);
+    const total = rows.length > 0 ? (num(rows[0]?.[20]) ?? 0) : 0;
+
+    const anchorId = Number.parseInt(req.getQueryParam("anchor") ?? "", 10);
+    const anchor = Number.isFinite(anchorId)
+      ? await loadAnchor(anchorId)
+      : null;
+    if (anchor !== null) {
+      applyAnchor(events, anchor);
+    }
+
+    return {
       from,
       to,
-      categories: parseList(p.get("category")),
-      sources: parseList(p.get("source")),
-      kinds: parseList(p.get("kind")),
-      span: spanParam === "1" ? true : spanParam === "0" ? false : null,
-      match: buildTrigramMatch(p.get("q") ?? ""),
-      limit: parseBounded(p.get("limit"), DEFAULT_LIMIT, 1, MAX_LIMIT),
-      offset: parseBounded(p.get("offset"), 0, 0, Number.MAX_SAFE_INTEGER),
+      total,
+      limit: q.limit,
+      offset: q.offset,
+      anchor,
+      events,
     };
+  } catch (error) {
+    console.error("[TIMELINE] query failed:", error);
+    return { from, to, total: 0, events: [], error: "Timeline query failed" };
+  }
+}
 
-    try {
-      const { sql, params } = buildEventsQuery(q);
-      const rows = await query(sql, params);
-      const events = rows.map(rowToEvent);
-      const total = rows.length > 0 ? (num(rows[0]?.[20]) ?? 0) : 0;
+export async function density(req: HttpRequest): Promise<object> {
+  const currentYear = new Date().getUTCFullYear();
+  const from = parseYear(req.getQueryParam("from"), 1900);
+  const to = Math.max(from, parseYear(req.getQueryParam("to"), currentYear));
+  const bucket = parseBounded(req.getQueryParam("bucket"), 10, 1, 1000);
+  const categories = parseList(req.getQueryParam("category"));
+  const sources = parseList(req.getQueryParam("source"));
 
-      const anchorId = Number.parseInt(p.get("anchor") ?? "", 10);
-      const anchor = Number.isFinite(anchorId)
-        ? await loadAnchor(anchorId)
-        : null;
-      if (anchor !== null) {
-        applyAnchor(events, anchor);
-      }
+  try {
+    const { sql, params } = buildDensityQuery(
+      from,
+      to,
+      bucket,
+      categories,
+      sources,
+    );
+    const rows = await query(sql, params as Params);
+    return {
+      from,
+      to,
+      bucket,
+      buckets: rows.map((r) => ({
+        year: num(r[0]) ?? 0,
+        category: str(r[1]) ?? "",
+        count: num(r[2]) ?? 0,
+      })),
+    };
+  } catch (error) {
+    console.error("[TIMELINE] density query failed:", error);
+    return { from, to, bucket, buckets: [], error: "Density query failed" };
+  }
+}
 
-      return {
-        from,
-        to,
-        total,
-        limit: q.limit,
-        offset: q.offset,
-        anchor,
-        events,
-      };
-    } catch (error) {
-      console.error("[TIMELINE] query failed:", error);
-      return { from, to, total: 0, events: [], error: "Timeline query failed" };
-    }
-  }),
-);
-
-addRoute(
-  "GET",
-  "/timeline/density",
-  jsonHandler(async (req) => {
-    const p = parsePath(req.uri).query;
-    const currentYear = new Date().getUTCFullYear();
-    const from = parseYear(p.get("from"), 1900);
-    const to = Math.max(from, parseYear(p.get("to"), currentYear));
-    const bucket = parseBounded(p.get("bucket"), 10, 1, 1000);
-    const categories = parseList(p.get("category"));
-    const sources = parseList(p.get("source"));
-
-    try {
-      const { sql, params } = buildDensityQuery(
-        from,
-        to,
-        bucket,
-        categories,
-        sources,
-      );
-      const rows = await query(sql, params);
-      return {
-        from,
-        to,
-        bucket,
-        buckets: rows.map((r) => ({
-          year: num(r[0]) ?? 0,
-          category: str(r[1]) ?? "",
-          count: num(r[2]) ?? 0,
-        })),
-      };
-    } catch (error) {
-      console.error("[TIMELINE] density query failed:", error);
-      return { from, to, bucket, buckets: [], error: "Density query failed" };
-    }
-  }),
-);
+export const timelineHandlers = [
+  HttpHandler.get("/timeline", async (req) =>
+    HttpResponse.json(await timeline(req)),
+  ),
+  HttpHandler.get("/timeline/density", async (req) =>
+    HttpResponse.json(await density(req)),
+  ),
+];

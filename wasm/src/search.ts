@@ -1,4 +1,10 @@
-import { addRoute, jsonHandler, parsePath, query } from "../trailbase.js";
+import { query } from "trailbase-wasm/db";
+import {
+  HttpHandler,
+  type HttpRequest,
+  HttpResponse,
+} from "trailbase-wasm/http";
+import { num, type Params, str } from "./values";
 
 /// Full-text search over titles and persons, served at `GET /search`.
 ///
@@ -103,20 +109,12 @@ export function parseBounded(
   return Math.min(n, max);
 }
 
-function optionalNumber(v: unknown): number | null {
-  return typeof v === "number" ? v : null;
-}
-
-function optionalString(v: unknown): string | null {
-  return typeof v === "string" ? v : null;
-}
-
 async function count(table: string, match: string): Promise<number> {
   const rows = await query(
     `SELECT COUNT(*) FROM ${table} WHERE ${table} MATCH ?`,
     [match],
   );
-  return optionalNumber(rows[0]?.[0]) ?? 0;
+  return num(rows[0]?.[0]) ?? 0;
 }
 
 async function searchTitles(
@@ -138,22 +136,22 @@ async function searchTitles(
       ORDER BY COALESCE(r.numVotes, 0) DESC,
                bm25(titles_fts, 10.0, 5.0, 1.0, 1.0)
       LIMIT ? OFFSET ?`,
-    [match, limit, offset],
+    [match, limit, offset] as Params,
   );
 
   const results: TitleResult[] = rows.map((row) => ({
     type: "title",
-    id: optionalNumber(row[0]) ?? 0,
-    tconst: optionalString(row[1]) ?? "",
-    titleType: optionalString(row[2]),
-    primaryTitle: optionalString(row[3]),
-    originalTitle: optionalString(row[4]),
-    startYear: optionalNumber(row[5]),
-    endYear: optionalNumber(row[6]),
-    genres: optionalString(row[7]),
-    averageRating: optionalNumber(row[8]),
-    numVotes: optionalNumber(row[9]),
-    highlight: optionalString(row[10]),
+    id: num(row[0]) ?? 0,
+    tconst: str(row[1]) ?? "",
+    titleType: str(row[2]),
+    primaryTitle: str(row[3]),
+    originalTitle: str(row[4]),
+    startYear: num(row[5]),
+    endYear: num(row[6]),
+    genres: str(row[7]),
+    averageRating: num(row[8]),
+    numVotes: num(row[9]),
+    highlight: str(row[10]),
   }));
 
   return { results, total: await count("titles_fts", match) };
@@ -172,85 +170,94 @@ async function searchPersons(
       WHERE persons_fts MATCH ?
       ORDER BY bm25(persons_fts, 10.0, 1.0)
       LIMIT ? OFFSET ?`,
-    [match, limit, offset],
+    [match, limit, offset] as Params,
   );
 
   const results: PersonResult[] = rows.map((row) => ({
     type: "person",
-    id: optionalNumber(row[0]) ?? 0,
-    nconst: optionalString(row[1]) ?? "",
-    primaryName: optionalString(row[2]),
-    birthYear: optionalNumber(row[3]),
-    deathYear: optionalNumber(row[4]),
-    primaryProfession: optionalString(row[5]),
-    highlight: optionalString(row[6]),
+    id: num(row[0]) ?? 0,
+    nconst: str(row[1]) ?? "",
+    primaryName: str(row[2]),
+    birthYear: num(row[3]),
+    deathYear: num(row[4]),
+    primaryProfession: str(row[5]),
+    highlight: str(row[6]),
   }));
 
   return { results, total: await count("persons_fts", match) };
 }
 
-addRoute(
-  "GET",
-  "/search",
-  jsonHandler(async (req): Promise<SearchResponse> => {
-    const params = parsePath(req.uri).query;
-    const searchQuery = params.get("q") ?? "";
-    const page = parseBounded(params.get("page"), 1, Number.MAX_SAFE_INTEGER);
-    const limit = parseBounded(params.get("limit"), DEFAULT_LIMIT, MAX_LIMIT);
-    const offset = (page - 1) * limit;
+export async function search(req: HttpRequest): Promise<SearchResponse> {
+  const searchQuery = req.getQueryParam("q") ?? "";
+  const page = parseBounded(
+    req.getQueryParam("page"),
+    1,
+    Number.MAX_SAFE_INTEGER,
+  );
+  const limit = parseBounded(
+    req.getQueryParam("limit"),
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+  );
+  const offset = (page - 1) * limit;
 
-    const filters = {
-      titles: params.get("titles") !== "false",
-      persons: params.get("persons") !== "false",
-      years: params.get("years") !== "false",
-    };
+  const filters = {
+    titles: req.getQueryParam("titles") !== "false",
+    persons: req.getQueryParam("persons") !== "false",
+    years: req.getQueryParam("years") !== "false",
+  };
 
-    const empty: SearchResponse = {
-      results: [],
-      totalPages: 0,
+  const empty: SearchResponse = {
+    results: [],
+    totalPages: 0,
+    currentPage: page,
+    totalResults: 0,
+    query: searchQuery,
+    filters,
+  };
+
+  const match = buildMatchExpression(searchQuery);
+  if (match === null) {
+    return empty;
+  }
+
+  try {
+    const titleMatch = filters.years
+      ? match
+      : restrictToColumns(match, ["primaryTitle", "originalTitle", "genres"]);
+
+    const [titles, persons] = await Promise.all([
+      filters.titles
+        ? searchTitles(titleMatch, limit, offset)
+        : Promise.resolve({ results: [], total: 0 }),
+      filters.persons
+        ? searchPersons(match, limit, offset)
+        : Promise.resolve({ results: [], total: 0 }),
+    ]);
+
+    // Each type is paginated independently with the same page/limit, so the
+    // page count is whichever type has more pages.
+    const totalPages = Math.max(
+      Math.ceil(titles.total / limit),
+      Math.ceil(persons.total / limit),
+    );
+
+    return {
+      results: [...titles.results, ...persons.results],
+      totalPages,
       currentPage: page,
-      totalResults: 0,
+      totalResults: titles.total + persons.total,
       query: searchQuery,
       filters,
     };
+  } catch (error) {
+    console.error("[SEARCH] query failed:", error);
+    return { ...empty, error: "Search failed" };
+  }
+}
 
-    const match = buildMatchExpression(searchQuery);
-    if (match === null) {
-      return empty;
-    }
-
-    try {
-      const titleMatch = filters.years
-        ? match
-        : restrictToColumns(match, ["primaryTitle", "originalTitle", "genres"]);
-
-      const [titles, persons] = await Promise.all([
-        filters.titles
-          ? searchTitles(titleMatch, limit, offset)
-          : Promise.resolve({ results: [], total: 0 }),
-        filters.persons
-          ? searchPersons(match, limit, offset)
-          : Promise.resolve({ results: [], total: 0 }),
-      ]);
-
-      // Each type is paginated independently with the same page/limit, so the
-      // page count is whichever type has more pages.
-      const totalPages = Math.max(
-        Math.ceil(titles.total / limit),
-        Math.ceil(persons.total / limit),
-      );
-
-      return {
-        results: [...titles.results, ...persons.results],
-        totalPages,
-        currentPage: page,
-        totalResults: titles.total + persons.total,
-        query: searchQuery,
-        filters,
-      };
-    } catch (error) {
-      console.error("[SEARCH] query failed:", error);
-      return { ...empty, error: "Search failed" };
-    }
-  }),
-);
+export const searchHandlers = [
+  HttpHandler.get("/search", async (req) =>
+    HttpResponse.json(await search(req)),
+  ),
+];
