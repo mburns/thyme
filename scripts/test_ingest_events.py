@@ -336,9 +336,13 @@ class SqliteFeaturesTest(IngestTest):
             (REPO / "sql" / "import_genres.sql").read_text(encoding="utf-8")
         )
         rows = self.conn.execute(
-            "SELECT genre, title_count FROM v_genre_summary ORDER BY genre"
+            "SELECT genre, title_count FROM genres ORDER BY genre"
         ).fetchall()
         self.assertEqual(rows, [("Comedy", 1), ("Crime", 1), ("Drama", 1)])
+        titles = self.conn.execute(
+            "SELECT primaryTitle, numVotes FROM v_genre_titles WHERE genre = 'Drama'"
+        ).fetchall()
+        self.assertEqual(titles, [("The Godfather", 2000000)])
         professions = self.conn.execute(
             "SELECT profession FROM person_professions WHERE person_id = 1 ORDER BY 1"
         ).fetchall()

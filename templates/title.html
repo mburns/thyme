@@ -15,7 +15,7 @@
             .then(res => res.json())
             .then(data => {
                 this.details = data;
-                if (this.details.titleType === 'tvSeries') {
+                if (['tvSeries', 'tvMiniSeries'].includes(this.details.titleType)) {
                     this.fetchEpisodes();
                 }
             });
@@ -29,7 +29,7 @@
     },
 
     fetchEpisodes() {
-        const url = `/api/records/v1/v_title_episodes_by_season?filter[parent_title_id][$eq]=${this.id}`;
+        const url = `/api/records/v1/v_title_episodes?filter[parent_title_id][$eq]=${this.id}&order=seasonNumber,episodeNumber&limit=1024`;
         fetch(url)
             .then(res => res.json())
             .then(data => {
@@ -110,7 +110,7 @@
             </div>
 
             <!-- Episode List -->
-            <div class="episodes-section" x-show="details.titleType === 'tvSeries' && episodes.length > 0">
+            <div class="episodes-section" x-show="episodes.length > 0">
                 <h2>Episodes</h2>
                 <template x-for="[season, items] in episodes" :key="season">
                     <div class="season-group">

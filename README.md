@@ -95,32 +95,33 @@ curl "http://localhost:4000/search?q=hanks&titles=false"
    make setup-hooks
    ```
 
-4. **Start TrailBase server** (to create the database)
+4. **Start TrailBase once** to create the database and apply the migrations
    ```bash
-   # Start TrailBase (you'll need to install it separately)
-   trailbase serve
+   trail run
    ```
+   This project targets TrailBase v0.14 (the `traildepot/scripts` JavaScript
+   runtime). Download a matching release from
+   https://github.com/trailbaseio/trailbase/releases.
 
-5. **Import IMDB data**
+5. **Import IMDB data** (stop the server first, then start it again)
    ```bash
    make import-data
+   make sync-events
    ```
 
 6. **Build the static site**
    ```bash
-   make build
+   yarn build:site
    ```
 
-7. **Serve the site**
+7. **Serve the site and the API from one origin**
    ```bash
-   # Using Python's built-in server
-   python -m http.server --directory dist
-   
-   # Or using any static file server
-   cd dist && python -m http.server 8000
+   trail run --public-dir dist
    ```
 
-Visit `http://localhost:8000` to see your IMDB browser!
+Visit `http://localhost:4000` to see your IMDB browser. The pages call
+`/api/records/v1/...` and `/search` on the same host, so a separate static
+file server will not work.
 
 ## 🛠️ Development
 

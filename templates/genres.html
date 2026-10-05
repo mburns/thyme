@@ -27,24 +27,26 @@
     },
     fetchGenres() {
         this.isLoadingGenres = true;
-        fetch('/api/records/v1/v_genre_summary')
+        fetch('/api/records/v1/genres?order=genre&limit=100')
             .then(res => res.json())
             .then(data => {
-                this.genres = data.records;
+                this.genres = data.records || [];
                 this.isLoadingGenres = false;
-            });
+            })
+            .catch(() => { this.isLoadingGenres = false; });
     },
     fetchTitles(genre) {
         this.selectedGenre = genre;
         this.isLoadingTitles = true;
         this.titles = [];
-        const url = `/api/records/v1/v_title_details?filter[genres][$like]=%${genre}%&order=-numVotes`;
+        const url = `/api/records/v1/v_genre_titles?filter[genre]=${encodeURIComponent(genre)}&order=-numVotes&limit=50`;
         fetch(url)
             .then(res => res.json())
             .then(data => {
-                this.titles = data.records;
+                this.titles = data.records || [];
                 this.isLoadingTitles = false;
-            });
+            })
+            .catch(() => { this.isLoadingTitles = false; });
     }
 }" x-init="init()">
 

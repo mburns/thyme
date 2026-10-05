@@ -1,8 +1,15 @@
 #!/usr/bin/env node
+/// Render the page templates into `dist/` and copy static assets.
+///
+/// Pages are every `templates/*.html` that does not start with `_` (layouts)
+/// and is not `error.html` (rendered by the server with an error message).
+/// Serve the result with TrailBase so the pages and the API share an origin:
+///   trail run --public-dir dist
 
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import fs from "fs-extra";
+import { render } from "./templates";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,119 +17,47 @@ const __dirname = path.dirname(__filename);
 const TEMPLATES_DIR = path.join(__dirname, "..", "templates");
 const STATIC_DIR = path.join(__dirname, "..", "static");
 const DIST_DIR = path.join(__dirname, "..", "dist");
+const NOT_PAGES = new Set(["error.html"]);
 
-// Simple template engine to replace Jinja2
-class SimpleTemplateEngine {
-  private templates: Map<string, string> = new Map();
-
-  constructor(private templatesDir: string) {}
-
-  async loadTemplate(name: string): Promise<string> {
-    if (this.templates.has(name)) {
-      // biome-ignore lint/style/noNonNullAssertion: TODO
-      return this.templates.get(name)!;
-    }
-
-    const templatePath = path.join(this.templatesDir, name);
-    const content = await fs.readFile(templatePath, "utf-8");
-    this.templates.set(name, content);
-    return content;
-  }
-
-  // biome-ignore lint/suspicious/noExplicitAny: TODO
-  render(templateContent: string, data: Record<string, any> = {}): string {
-    let result = templateContent;
-
-    // Simple variable replacement {{ variable }}
-    for (const [key, value] of Object.entries(data)) {
-      const regex = new RegExp(`{{\\s*${key}\\s*}}`, "g");
-      result = result.replace(regex, String(value));
-    }
-
-    // Handle extends and blocks (simplified)
-    const extendsMatch = result.match(/{%\s*extends\s+['"]([^'"]+)['"]\s*%}/);
-    if (extendsMatch) {
-      // const baseTemplate = extendsMatch[1]; // TODO: Implement base template support
-      // For now, just remove the extends directive
-      result = result.replace(/{%\s*extends\s+['"][^'"]+['"]\s*%}/, "");
-    }
-
-    // Remove block markers for now
-    result = result.replace(/{%\s*block\s+\w+\s*%}/g, "");
-    result = result.replace(/{%\s*endblock\s*%}/g, "");
-
-    return result;
-  }
+function pageTemplates(dir: string): string[] {
+  return fs
+    .readdirSync(dir)
+    .filter(
+      (f) => f.endsWith(".html") && !f.startsWith("_") && !NOT_PAGES.has(f),
+    )
+    .sort();
 }
 
 async function build(): Promise<void> {
   console.log("Starting build...");
+  await fs.emptyDir(DIST_DIR);
 
-  // 1. Clean and create the dist directory
-  if (await fs.pathExists(DIST_DIR)) {
-    await fs.remove(DIST_DIR);
-  }
-  await fs.ensureDir(DIST_DIR);
-
-  // 2. Set up template engine
-  const engine = new SimpleTemplateEngine(TEMPLATES_DIR);
-
-  // 3. Find and render page templates (those not starting with '_')
-  const pageTemplates = [
-    "index.html",
-    "about.html",
-    "movies.html",
-    "persons.html",
-    "person.html",
-    "title.html",
-    "genres.html",
-    "top-rated.html",
-    "short.html",
-    "video.html",
-    "videogame.html",
-    "tv.html",
-    "search.html",
-  ];
-
-  console.log(`Found page templates: ${pageTemplates.join(", ")}`);
-
-  for (const templateName of pageTemplates) {
-    try {
-      const templateContent = await engine.loadTemplate(templateName);
-      const renderedHtml = engine.render(templateContent);
-
-      const outputPath = path.join(DIST_DIR, templateName);
-      await fs.ensureDir(path.dirname(outputPath));
-
-      await fs.writeFile(outputPath, renderedHtml, "utf-8");
-      console.log(`  - Rendered ${templateName} -> ${outputPath}`);
-    } catch (error) {
-      console.error(`  - Error rendering ${templateName}:`, error);
+  const cache = new Map<string, string>();
+  const load = (name: string): string => {
+    let text = cache.get(name);
+    if (text === undefined) {
+      text = fs.readFileSync(path.join(TEMPLATES_DIR, name), "utf-8");
+      cache.set(name, text);
     }
+    return text;
+  };
+
+  const pages = pageTemplates(TEMPLATES_DIR);
+  for (const name of pages) {
+    const html = render(name, load);
+    await fs.writeFile(path.join(DIST_DIR, name), html, "utf-8");
+    console.log(`  - ${name}`);
   }
 
-  // 4. Copy static assets if they exist
   if (await fs.pathExists(STATIC_DIR)) {
     await fs.copy(STATIC_DIR, path.join(DIST_DIR, "static"));
-    console.log("Copied static assets.");
-  } else {
-    // Create an empty static dir in dist so it can be served
-    await fs.ensureDir(path.join(DIST_DIR, "static"));
-    console.log("Created empty static directory.");
   }
-
-  console.log('\nBuild complete! Your static site is in the "dist" directory.');
-}
-
-async function main(): Promise<void> {
-  try {
-    await build();
-  } catch (error) {
-    console.error("Build failed:", error);
-    process.exit(1);
-  }
+  console.log(`Rendered ${pages.length} pages into ${DIST_DIR}`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  main();
+  build().catch((error) => {
+    console.error("Build failed:", error);
+    process.exit(1);
+  });
 }
