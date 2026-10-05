@@ -255,5 +255,95 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(version, "Lahman 1871-2024, Oct 30, 2025")
 
 
+class SqliteFeaturesTest(IngestTest):
+    """The span flag, the R*Tree interval index and the Julian-day columns."""
+
+    def test_spans_are_flagged_and_open_ended_in_the_rtree(self) -> None:
+        self.sync_all()
+        rows = self.conn.execute(
+            "SELECT kind, span FROM events WHERE kind IN ('life', 'career', 'run', "
+            "'award', 'release') GROUP BY kind"
+        ).fetchall()
+        self.assertEqual(
+            dict(rows), {"award": 0, "career": 1, "life": 1, "release": 0, "run": 1}
+        )
+        # Ohtani is still playing: his career extends to the open-end sentinel.
+        end = self.conn.execute(
+            "SELECT events_span.end_year FROM events_span JOIN events ON events.id = events_span.id "
+            "WHERE events.external_id = 'ohtansh01:career'"
+        ).fetchone()[0]
+        self.assertEqual(end, 9999)
+        # An instant occupies a single year.
+        row = self.conn.execute(
+            "SELECT start_year, end_year FROM events_span WHERE id = "
+            "(SELECT id FROM events WHERE kind = 'hall_of_fame')"
+        ).fetchone()
+        self.assertEqual(row, (1982, 1982))
+
+    def test_rtree_overlap_and_point_in_time(self) -> None:
+        self.sync_all()
+        alive_1960 = self.conn.execute(
+            "SELECT entity_name FROM v_events JOIN events_span ON events_span.id = v_events.id "
+            "WHERE events_span.start_year <= 1960 AND events_span.end_year >= 1960 "
+            "AND v_events.kind = 'life' ORDER BY 1"
+        ).fetchall()
+        self.assertEqual(
+            [r[0] for r in alive_1960], ["Douglas Adams", "Hank Aaron", "Marlon Brando"]
+        )
+        self.assertEqual(
+            self.count("SELECT COUNT(*) FROM events"),
+            self.count("SELECT COUNT(*) FROM events_span"),
+        )
+
+    def test_rtree_follows_updates_and_deletes(self) -> None:
+        self.syncer.sync(SOURCES["lahman"])
+        before = self.count("SELECT COUNT(*) FROM events_span")
+        self.conn.execute(
+            "UPDATE events SET end_year = 2030, end_date = '2030' WHERE external_id = 'ohtansh01:career'"
+        )
+        end = self.conn.execute(
+            "SELECT end_year FROM events_span WHERE id = (SELECT id FROM events WHERE external_id = 'ohtansh01:career')"
+        ).fetchone()[0]
+        self.assertEqual(end, 2030)
+        self.conn.execute("DELETE FROM entities WHERE external_id = 'ohtansh01'")
+        self.assertEqual(self.count("SELECT COUNT(*) FROM events_span"), before - 2)
+
+    def test_julian_days_only_for_day_precision(self) -> None:
+        self.sync_all()
+        rows = self.conn.execute(
+            "SELECT precision, start_julian IS NOT NULL, end_julian IS NOT NULL FROM events "
+            "WHERE external_id IN ('aaronha01:life', 'Q23:life') ORDER BY precision"
+        ).fetchall()
+        self.assertEqual(rows, [("day", 1, 1), ("year", 0, 0)])
+        days = self.conn.execute(
+            "SELECT CAST(b.start_julian - a.start_julian AS INTEGER) FROM events a, events b "
+            "WHERE a.external_id = 'aaronha01:life' AND b.external_id = 'aaronha01:career'"
+        ).fetchone()[0]
+        self.assertEqual(days, 7372)
+
+    def test_trigram_substring_search(self) -> None:
+        self.sync_all()
+        hits = self.conn.execute(
+            "SELECT entities.name FROM entities_fts JOIN entities ON entities.id = entities_fts.rowid "
+            "WHERE entities_fts MATCH '\"ARISTO\"'"
+        ).fetchall()
+        self.assertEqual(hits, [("Aristotle",)])
+
+    def test_genres_are_normalised(self) -> None:
+        # The migration splits rows that already exist; the IMDB import runs
+        # this same SQL after every load.
+        self.conn.executescript(
+            (REPO / "sql" / "import_genres.sql").read_text(encoding="utf-8")
+        )
+        rows = self.conn.execute(
+            "SELECT genre, title_count FROM v_genre_summary ORDER BY genre"
+        ).fetchall()
+        self.assertEqual(rows, [("Comedy", 1), ("Crime", 1), ("Drama", 1)])
+        professions = self.conn.execute(
+            "SELECT profession FROM person_professions WHERE person_id = 1 ORDER BY 1"
+        ).fetchall()
+        self.assertEqual([p[0] for p in professions], ["actor", "director"])
+
+
 if __name__ == "__main__":
     unittest.main()

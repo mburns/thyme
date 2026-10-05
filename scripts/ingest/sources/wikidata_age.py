@@ -64,6 +64,7 @@ class WikidataAgeSource(Source):
                 precision="year",
                 start_year=birth,
                 end_year=death,
+                span=True,
                 category=(r["Occupation"] or "person").strip().lower(),
                 detail={
                     "gender": r["Gender"] or None,

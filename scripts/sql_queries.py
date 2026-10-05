@@ -63,5 +63,9 @@ class SQLQueries:
     def import_crew_writers(self) -> str:
         return self.load("import_crew_writers.sql")
 
+    @property
+    def import_genres(self) -> str:
+        return self.load("import_genres.sql")
+
 # Global instance for easy access
 queries: SQLQueries = SQLQueries() 

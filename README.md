@@ -221,6 +221,42 @@ yield `Entity` and `Event` rows, and register it in `SOURCES`. Use the
 `wikidata_id` column wherever a QID is known; it is the join key between
 sources.
 
+### Timeline API
+
+`GET /timeline` (in `traildepot/scripts/timeline.ts`) returns events that
+overlap a year range, with filters for `category`, `source`, `kind`, `span`
+and an entity-name substring `q`. Pass `anchor=<entity id>` to get every
+event's offset in years (and days, at day precision) from that entity's life,
+career or run. `from=1972&to=1972&span=1` answers "what was going on in
+1972". `GET /timeline/density` returns counts per year bucket and category for
+histogram strips.
+
+```bash
+curl -g "http://localhost:4000/timeline?from=1950&to=1960&category=baseball&kind=championship"
+curl -g "http://localhost:4000/timeline?q=aaron&anchor=24023&limit=50"
+curl -g "http://localhost:4000/timeline/density?from=1800&to=2020&bucket=10&source=wikidata_age"
+```
+
+### SQLite features in use
+
+The database is plain SQLite, read by TrailBase's bundled build (3.49) and
+written by the Python ingest; everything below works in both.
+
+| Feature | Where |
+|---|---|
+| STRICT tables, CHECK constraints, foreign keys with cascades | every table |
+| FTS5 external-content indexes with `unicode61` for prefix search and `highlight()` | `titles_fts`, `persons_fts`, `/search` |
+| FTS5 `trigram` tokenizer for substring name search | `entities_fts`, `/timeline?q=` |
+| R*Tree (`rtree_i32`) over `[start_year, end_year]` for interval overlap | `events_span`, kept in sync by triggers |
+| VIRTUAL generated columns (`julianday`) for day-level offsets | `events.start_julian`, `events.end_julian` |
+| JSON: `json_each` to normalise comma lists, `json_object` for event details, `json_valid` CHECK | `title_genres`, `person_professions`, `events.detail` |
+| Window functions (`row_number`, `count(*) OVER ()`) | `/timeline` |
+| UPSERT (`ON CONFLICT DO UPDATE`), `WITHOUT ROWID` staging, partial indexes | ingest, `entities_by_wikidata` |
+| STAT4 statistics via `ANALYZE` and `PRAGMA optimize`, WAL journal | end of every sync |
+
+Not available in TrailBase's build and therefore avoided: the math functions
+(`ln`, `floor`) and geopoly.
+
 ## 🎨 Customization
 
 ### Adding New Pages

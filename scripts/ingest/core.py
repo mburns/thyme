@@ -78,6 +78,8 @@ class Event:
     end_date: str | None = None
     end_year: int | None = None
     detail: dict[str, Any] | None = None
+    #: True for a duration (life, career, run); an open end then means ongoing.
+    span: bool = False
 
 
 @dataclass
@@ -193,7 +195,7 @@ def _stage_events(conn: sqlite3.Connection, rows: Iterable[Event]) -> None:
     for batch in _batched(rows, BATCH_SIZE):
         conn.executemany(
             "INSERT OR REPLACE INTO stage_events VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     e.external_id,
@@ -208,6 +210,7 @@ def _stage_events(conn: sqlite3.Connection, rows: Iterable[Event]) -> None:
                     e.end_year,
                     e.category,
                     json.dumps(e.detail, ensure_ascii=False) if e.detail else None,
+                    1 if e.span else 0,
                 )
                 for e in batch
             ],
@@ -236,7 +239,8 @@ CREATE TEMP TABLE stage_events (
   start_year INTEGER NOT NULL,
   end_year INTEGER,
   category TEXT NOT NULL,
-  detail TEXT
+  detail TEXT,
+  span INTEGER NOT NULL
 ) WITHOUT ROWID;
 """
 
@@ -253,9 +257,9 @@ ON CONFLICT (source_id, kind, external_id) DO UPDATE SET
 
 UPSERT_EVENTS = """
 INSERT INTO events (source_id, entity_id, external_id, kind, label, start_date,
-                    end_date, precision, start_year, end_year, category, detail)
+                    end_date, precision, start_year, end_year, category, detail, span)
 SELECT ?, n.id, s.external_id, s.kind, s.label, s.start_date, s.end_date,
-       s.precision, s.start_year, s.end_year, s.category, s.detail
+       s.precision, s.start_year, s.end_year, s.category, s.detail, s.span
 FROM stage_events s
 JOIN entities n
   ON n.source_id = ? AND n.kind = s.entity_kind AND n.external_id = s.entity_external_id
@@ -270,7 +274,8 @@ ON CONFLICT (source_id, external_id) DO UPDATE SET
   start_year = excluded.start_year,
   end_year = excluded.end_year,
   category = excluded.category,
-  detail = excluded.detail
+  detail = excluded.detail,
+  span = excluded.span
 """
 
 DELETE_STALE_EVENTS = """
@@ -293,6 +298,13 @@ class Syncer:
         self.conn = conn
         self.data_dir = data_dir
         conn.execute("PRAGMA foreign_keys = ON")
+        # Bulk-load settings: WAL keeps TrailBase readable during a sync,
+        # NORMAL sync is safe under WAL, and a big cache plus in-memory temp
+        # tables keep the staging and upsert passes off disk.
+        conn.execute("PRAGMA journal_mode = WAL")
+        conn.execute("PRAGMA synchronous = NORMAL")
+        conn.execute("PRAGMA temp_store = MEMORY")
+        conn.execute("PRAGMA cache_size = -262144")
 
     def register(self, source: Source) -> int:
         """Ensure the source row exists and return its id."""
@@ -467,6 +479,9 @@ class Syncer:
         conn.execute("INSERT INTO entities_fts(entities_fts) VALUES ('rebuild')")
         conn.commit()
         conn.executescript("DROP TABLE stage_entities; DROP TABLE stage_events;")
+        # Refresh planner statistics (STAT4 histograms) for the tables that
+        # just changed, then let SQLite decide whether anything else is stale.
+        conn.executescript("ANALYZE events; ANALYZE entities; PRAGMA optimize;")
 
         unresolved = staged_events - events_written
         message = f"{events_written:,} events upserted, {events_deleted:,} removed"

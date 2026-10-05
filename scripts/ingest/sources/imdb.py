@@ -42,7 +42,7 @@ SELECT nconst || ':life', 'person', nconst, 'life', primaryName,
        'year', birthYear, deathYear,
        COALESCE(NULLIF(substr(primaryProfession, 1,
                  instr(primaryProfession || ',', ',') - 1), ''), 'person'),
-       NULL
+       NULL, 1
 FROM persons
 WHERE birthYear IS NOT NULL AND primaryName IS NOT NULL
 {limit}
@@ -68,7 +68,8 @@ SELECT t.tconst || ':' || k.kind, 'title', t.tconst, k.kind, t.primaryTitle,
        CASE WHEN k.kind = 'run' THEN t.endYear END,
        {CATEGORY_SQL},
        json_object('titleType', t.titleType, 'genres', t.genres,
-                   'rating', r.averageRating, 'votes', r.numVotes)
+                   'rating', r.averageRating, 'votes', r.numVotes),
+       CASE WHEN k.kind = 'run' THEN 1 ELSE 0 END
 FROM titles t
 JOIN ratings r ON r.title_id = t.id
 JOIN (SELECT CASE WHEN t2.titleType IN ('tvSeries', 'tvMiniSeries')

@@ -635,6 +635,16 @@ def import_crew(conn: sqlite3.Connection) -> None:
     conn.commit()
     logger.info(f"Processed {count:,} crew members")
 
+def import_genres(conn: sqlite3.Connection) -> None:
+    """Split comma-separated genres and professions into normalised tables."""
+    logger.info("Processing genres and professions...")
+
+    conn.executescript(queries.import_genres)
+    genres: int = conn.execute("SELECT COUNT(*) FROM title_genres").fetchone()[0]
+    professions: int = conn.execute("SELECT COUNT(*) FROM person_professions").fetchone()[0]
+    conn.commit()
+    logger.info(f"Processed {genres:,} title genres and {professions:,} person professions")
+
 def cleanup_temp_tables(conn: sqlite3.Connection) -> None:
     """Clean up temporary tables."""
     logger.info("Cleaning up temporary tables...")
@@ -863,7 +873,8 @@ def main() -> None:
             import_episodes(conn)
             import_principals(conn)
             import_crew(conn)
-            
+            import_genres(conn)
+
             cleanup_temp_tables(conn)
         
         elapsed_time: float = time.time() - start_time

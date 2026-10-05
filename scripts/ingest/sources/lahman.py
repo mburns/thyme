@@ -116,6 +116,7 @@ class LahmanSource(Source):
                     precision=precision,
                     start_year=birth_year,
                     end_year=death_year,
+                    span=True,
                     category=CATEGORY,
                     detail={
                         "birthplace": ", ".join(
@@ -146,6 +147,7 @@ class LahmanSource(Source):
                     precision="day",
                     start_year=_year_of(debut),
                     end_year=_year_of(final) if final else None,
+                    span=True,
                     category=CATEGORY,
                 )
 
@@ -243,6 +245,7 @@ class LahmanSource(Source):
                 precision="year",
                 start_year=first,
                 end_year=None if active else last,
+                span=True,
                 category=CATEGORY,
                 detail={"seasons": len(years)},
             )

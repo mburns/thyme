@@ -28,6 +28,8 @@ export interface TitleResult {
   genres: string | null;
   averageRating: number | null;
   numVotes: number | null;
+  /// primaryTitle with matched terms wrapped in <mark>.
+  highlight: string | null;
 }
 
 export interface PersonResult {
@@ -38,6 +40,8 @@ export interface PersonResult {
   birthYear: number | null;
   deathYear: number | null;
   primaryProfession: string | null;
+  /// primaryName with matched terms wrapped in <mark>.
+  highlight: string | null;
 }
 
 export interface SearchResponse {
@@ -122,9 +126,11 @@ async function searchTitles(
 ): Promise<{ results: TitleResult[]; total: number }> {
   // Most-voted first so popular titles beat obscure ones that happen to score
   // a marginally better bm25; bm25 weights favour primaryTitle over the rest.
+  // highlight() wraps the matched terms of primaryTitle (FTS column 0).
   const rows = await query(
     `SELECT t.id, t.tconst, t.titleType, t.primaryTitle, t.originalTitle,
-            t.startYear, t.endYear, t.genres, r.averageRating, r.numVotes
+            t.startYear, t.endYear, t.genres, r.averageRating, r.numVotes,
+            highlight(titles_fts, 0, '<mark>', '</mark>')
        FROM titles_fts
        JOIN titles t ON t.id = titles_fts.rowid
        LEFT JOIN ratings r ON r.title_id = t.id
@@ -147,6 +153,7 @@ async function searchTitles(
     genres: optionalString(row[7]),
     averageRating: optionalNumber(row[8]),
     numVotes: optionalNumber(row[9]),
+    highlight: optionalString(row[10]),
   }));
 
   return { results, total: await count("titles_fts", match) };
@@ -159,7 +166,7 @@ async function searchPersons(
 ): Promise<{ results: PersonResult[]; total: number }> {
   const rows = await query(
     `SELECT p.id, p.nconst, p.primaryName, p.birthYear, p.deathYear,
-            p.primaryProfession
+            p.primaryProfession, highlight(persons_fts, 0, '<mark>', '</mark>')
        FROM persons_fts
        JOIN persons p ON p.id = persons_fts.rowid
       WHERE persons_fts MATCH ?
@@ -176,6 +183,7 @@ async function searchPersons(
     birthYear: optionalNumber(row[3]),
     deathYear: optionalNumber(row[4]),
     primaryProfession: optionalString(row[5]),
+    highlight: optionalString(row[6]),
   }));
 
   return { results, total: await count("persons_fts", match) };
