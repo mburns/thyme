@@ -1,7 +1,7 @@
 import { execSync } from "node:child_process";
 
-// Mock child_process
-jest.mock("child_process", () => ({
+// Mock child_process (the specifier must match the import above exactly)
+jest.mock("node:child_process", () => ({
   execSync: jest.fn(),
 }));
 

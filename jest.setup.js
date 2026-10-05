@@ -1,5 +1,5 @@
-// Global test setup
-import { jest } from "@jest/globals";
+// Global test setup. Runs under Jest's CommonJS runtime, where `jest` is a
+// global, so no import is needed (and an ESM import would fail to parse).
 
 // Increase timeout for database operations
 jest.setTimeout(30000);

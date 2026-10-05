@@ -31,24 +31,37 @@ The website includes powerful full-text search capabilities powered by SQLite's 
 - Movie titles: "The Godfather", "Star Wars"
 - Actor names: "Tom Hanks", "Meryl Streep"
 - Genres: "action", "drama", "comedy"
-- Years: "1999", "2020s", "1980s"
-- Combined searches: "action 2023", "Tom Hanks drama"
+- Years: "1999"
+- Combined title searches: "action 2023", "godfather 1972"
+- Exact phrases: `"the godfather"` (quotes keep the words together)
+
+Terms are AND-ed and the last term is prefix-matched, so typing "godf" already
+finds "The Godfather". Titles are ordered by number of votes, then relevance;
+people by relevance.
 
 ### Technical Implementation
-- **FTS5 Virtual Tables**: Separate search indexes for titles and persons
-- **Combined Search View**: Unified search across all content types
-- **TrailBase API**: RESTful search endpoint at `/search`
+- **FTS5 Virtual Tables**: `titles_fts` (primary/original title, genres, start
+  year) and `persons_fts` (name, professions) are external-content tables over
+  `titles` and `persons`
+- **Automatic Sync**: Database triggers keep both indexes up to date; the
+  migration also rebuilds them from existing rows
+- **TrailBase API**: `GET /search` in `traildepot/scripts/search.ts` turns the
+  query into a safe FTS5 `MATCH` expression and paginates each type with
+  `page` and `limit` (max 100)
 - **Alpine.js Frontend**: Reactive search interface with debouncing
-- **Automatic Sync**: Database triggers keep search indexes up-to-date
 
 ### Testing Search
 ```bash
-# Test the search functionality
-make test-search
+# Unit tests for the query builder and parameter parsing
+yarn test
 
-# Start TrailBase server and test the API
-trailbase serve
-curl "http://localhost:8080/search?q=godfather&titles=true&persons=true"
+# Check the FTS5 indexes in an imported database
+python3 scripts/test_search.py traildepot/data/main.db
+
+# Start TrailBase and hit the API
+trail run
+curl "http://localhost:4000/search?q=godfather&limit=5"
+curl "http://localhost:4000/search?q=hanks&titles=false"
 ```
 
 ## 🚀 Quick Start

@@ -1,16 +1,28 @@
 export default {
   preset: "ts-jest",
   testEnvironment: "node",
-  roots: ["<rootDir>/src", "<rootDir>/scripts"],
-  testMatch: ["**/__tests__/**/*.ts", "**/?(*.)+(spec|test).ts"],
+  roots: ["<rootDir>/scripts"],
+  // Jest's default pattern also matches `scripts/test.ts`, which is a CLI
+  // script, not a test suite.
+  testMatch: ["**/__tests__/**/*.test.ts", "**/*.spec.ts"],
   transform: {
-    "^.+\\.ts$": "ts-jest",
+    // The project tsconfig targets ESM for TrailBase; tests run as CommonJS.
+    // Type-checking is `yarn type-check`'s job, so transpile only.
+    "^.+\\.ts$": [
+      "ts-jest",
+      {
+        tsconfig: {
+          module: "commonjs",
+          moduleResolution: "node",
+          isolatedModules: true,
+        },
+      },
+    ],
   },
   collectCoverageFrom: [
-    "src/**/*.ts",
     "scripts/**/*.ts",
-    "!src/**/*.d.ts",
-    "!scripts/**/*.d.ts",
+    "traildepot/scripts/**/*.ts",
+    "!**/*.d.ts",
     "!**/__tests__/**",
     "!**/node_modules/**",
   ],
@@ -25,8 +37,9 @@ export default {
     },
   },
   moduleFileExtensions: ["ts", "js", "json"],
-  moduleNameMapping: {
-    "^@/(.*)$": "<rootDir>/src/$1",
+  moduleNameMapper: {
+    "^@/scripts/(.*)$": "<rootDir>/scripts/$1",
+    "^@/types/(.*)$": "<rootDir>/types/$1",
   },
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   testTimeout: 10000,
