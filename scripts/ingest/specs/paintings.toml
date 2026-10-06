@@ -1,0 +1,31 @@
+# Famous paintings (Kaggle, mexwell): the artists table has birth and
+# death years, nationality and style. The works carry no dates, so only
+# the painters' lives are events.
+slug = "paintings"
+name = "Famous painters"
+homepage = "https://www.kaggle.com/datasets/mexwell/famous-paintings"
+license = "CC0"
+description = "421 painters with birth and death years, nationality and style."
+files = ["art/artist.csv"]
+category = "painter"
+min_year = 1200
+max_year = 2026
+
+[[entities]]
+file = "art/artist.csv"
+kind = "person"
+id = "{artist_id}"
+name = "{full_name}"
+description = "{nationality} {style} painter"
+
+[[events]]
+file = "art/artist.csv"
+id = "{artist_id}:life"
+entity = "person:{artist_id}"
+kind = "life"
+label = "{full_name}"
+start = "{birth}"
+end = "{death}"
+span = true
+require = ["birth"]
+detail = { nationality = "{nationality}", style = "{style}" }

@@ -1,0 +1,99 @@
+# International cricket fixtures: one row per Test, ODI or T20I with the
+# date and the two teams. The match sits on team1's lane with team2 as a
+# participant.
+slug = "cricket"
+name = "International cricket matches"
+homepage = "https://www.kaggle.com/datasets/mahendran1/icc-cricket"
+license = "CC0"
+description = "Tests, one-day and T20 internationals since 1877, by date and teams."
+files = ["sports/cricket/tests.csv", "sports/cricket/odis.csv", "sports/cricket/t20i.csv"]
+category = "cricket"
+min_year = 1870
+max_year = 2026
+
+[[entities]]
+file = "sports/cricket/tests.csv"
+kind = "team"
+id = "{team1}"
+name = "{team1}"
+description = "Cricket team"
+
+[[entities]]
+file = "sports/cricket/tests.csv"
+kind = "team"
+id = "{team2}"
+name = "{team2}"
+description = "Cricket team"
+
+[[entities]]
+file = "sports/cricket/odis.csv"
+kind = "team"
+id = "{team1}"
+name = "{team1}"
+description = "Cricket team"
+
+[[entities]]
+file = "sports/cricket/odis.csv"
+kind = "team"
+id = "{team2}"
+name = "{team2}"
+description = "Cricket team"
+
+[[entities]]
+file = "sports/cricket/t20i.csv"
+kind = "team"
+id = "{team1}"
+name = "{team1}"
+description = "Cricket team"
+
+[[entities]]
+file = "sports/cricket/t20i.csv"
+kind = "team"
+id = "{team2}"
+name = "{team2}"
+description = "Cricket team"
+
+[[events]]
+file = "sports/cricket/tests.csv"
+id = "{type}:{date}:{team1}:{team2}"
+entity = "team:{team1}"
+kind = "game"
+label = "{team1} v {team2} ({type})"
+start = "{date}"
+detail = { format = "{type}", home = "{team1}", away = "{team2}" }
+
+[[events]]
+file = "sports/cricket/odis.csv"
+id = "{type}:{date}:{team1}:{team2}"
+entity = "team:{team1}"
+kind = "game"
+label = "{team1} v {team2} ({type})"
+start = "{date}"
+detail = { format = "{type}", home = "{team1}", away = "{team2}" }
+
+[[events]]
+file = "sports/cricket/t20i.csv"
+id = "{type}:{date}:{team1}:{team2}"
+entity = "team:{team1}"
+kind = "game"
+label = "{team1} v {team2} ({type})"
+start = "{date}"
+detail = { format = "{type}", home = "{team1}", away = "{team2}" }
+
+[[participants]]
+file = "sports/cricket/tests.csv"
+event = "{type}:{date}:{team1}:{team2}"
+entity = "team:{team2}"
+role = "away"
+
+[[participants]]
+file = "sports/cricket/odis.csv"
+event = "{type}:{date}:{team1}:{team2}"
+entity = "team:{team2}"
+role = "away"
+
+[[participants]]
+file = "sports/cricket/t20i.csv"
+event = "{type}:{date}:{team1}:{team2}"
+entity = "team:{team2}"
+role = "away"

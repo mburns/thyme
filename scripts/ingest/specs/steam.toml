@@ -1,0 +1,31 @@
+# Steam games (Kaggle, FronkonGames "Steam Games Dataset", March 2025
+# snapshot). One release instant per game; the Steam app id is the exact
+# key Wikidata carries as P1733, so games link to their Wikidata items.
+slug = "steam"
+name = "Steam games"
+homepage = "https://www.kaggle.com/datasets/fronkongames/steam-games-dataset"
+license = "MIT"
+description = "89k games on Steam: release date, developers, publishers, genres and review counts."
+files = ["steam/games_march2025_cleaned.csv"]
+category = "videogame"
+min_year = 1970
+max_year = 2026
+
+[[entities]]
+file = "steam/games_march2025_cleaned.csv"
+kind = "videogame"
+id = "{appid}"
+name = "{name}"
+description = "{short_description}"
+url = "https://store.steampowered.com/app/{appid}"
+identifiers = { steam = "{appid}" }
+
+[[events]]
+file = "steam/games_march2025_cleaned.csv"
+id = "{appid}"
+entity = "videogame:{appid}"
+kind = "release"
+label = "{name}"
+start = "{release_date}"
+require = ["release_date"]
+detail = { developers = "{developers}", publishers = "{publishers}", genres = "{genres}", metacritic = "{metacritic_score|int}", owners = "{estimated_owners}", positive = "{positive|int}", negative = "{negative|int}" }

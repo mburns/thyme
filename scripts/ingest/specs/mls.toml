@@ -1,0 +1,42 @@
+# Major League Soccer matches since 1996 (Kaggle, josephvm/major-league-
+# soccer-dataset). A match is an instant on the home team's lane with the
+# away team as participant; dates are M/D/YYYY.
+slug = "mls"
+name = "Major League Soccer matches"
+homepage = "https://www.kaggle.com/datasets/josephvm/major-league-soccer-dataset"
+license = "CC0"
+description = "Every MLS match since 1996: teams, score, venue and competition stage."
+files = ["sports/mls/matches.csv"]
+category = "soccer"
+min_year = 1990
+max_year = 2026
+
+[[entities]]
+file = "sports/mls/matches.csv"
+kind = "team"
+id = "{home}"
+name = "{home}"
+description = "MLS team"
+
+[[entities]]
+file = "sports/mls/matches.csv"
+kind = "team"
+id = "{away}"
+name = "{away}"
+description = "MLS team"
+
+[[events]]
+file = "sports/mls/matches.csv"
+id = "{date}:{home}:{away}"
+entity = "team:{home}"
+kind = "game"
+label = "{home} {home_score} – {away} {away_score}"
+start = "{date}"
+require = ["home", "away"]
+detail = { home = "{home}", away = "{away}", home_score = "{home_score|int}", away_score = "{away_score|int}", venue = "{venue}", competition = "{league}", stage = "{part_of_competition}", attendance = "{attendance}" }
+
+[[participants]]
+file = "sports/mls/matches.csv"
+event = "{date}:{home}:{away}"
+entity = "team:{away}"
+role = "away"

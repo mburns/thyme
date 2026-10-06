@@ -14,6 +14,7 @@ help:
 	@echo "  link         - Rebuild entity links (the same person across sources)"
 	@echo "  rerank       - Recompute event rank and the level-of-detail table"
 	@echo "  wikidata-extract DUMP=... - Reduce a Wikidata JSON dump to data/wikidata/"
+	@echo "  wikipedia-lists [SEEDS=...] - Fetch Wikipedia bibliographies and lists to data/wikipedia/lists/"
 	@echo ""
 	@echo "Build and run:"
 	@echo "  wasm         - Build the WASM component with the custom endpoints"
@@ -63,6 +64,13 @@ wikidata-extract:
 	@test -n "$(DUMP)" || { echo "usage: make wikidata-extract DUMP=latest-all.json.gz"; exit 1; }
 	@python3 scripts/wikidata_extract.py "$(DUMP)"
 
+# Fetch list pages (bibliographies, "List of ...") from Wikipedia.
+# Usage: make wikipedia-lists SEEDS="Lists of books" MAX_PAGES=60
+SEEDS ?= Lists of books
+MAX_PAGES ?= 60
+wikipedia-lists:
+	@python3 scripts/wikipedia_lists_fetch.py $(SEEDS) --max-pages $(MAX_PAGES)
+
 wasm:
 	@yarn --silent wasm:build
 	@echo "✅ Component built: traildepot/wasm/component.wasm"
@@ -78,6 +86,8 @@ test: test-ingest
 
 test-ingest:
 	@python3 scripts/test_ingest_events.py
+	@python3 scripts/test_wikipedia_lists.py
+	@python3 scripts/test_wikidata_extract.py
 
 test-search:
 	@python3 scripts/test_search.py

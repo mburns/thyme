@@ -1,0 +1,48 @@
+# Book-Crossing books (Ziegler et al.): ISBN, title, author, publisher and
+# year of publication for 271k books. Each book is an entity with a
+# publication instant; the author takes part in it, so a person page lists
+# their books and the Books domain can count publications.
+slug = "bx_books"
+name = "Book-Crossing books"
+homepage = "http://www2.informatik.uni-freiburg.de/~cziegler/BX/"
+license = "Free for research use (Book-Crossing dataset)"
+description = "271k books with ISBN, author, publisher and year of publication."
+files = ["books/BX-Books.csv"]
+category = "book"
+# The file uses 0 for an unknown year and has a few typos past the present.
+min_year = 1400
+max_year = 2026
+
+[[entities]]
+file = "books/BX-Books.csv"
+kind = "book"
+id = "{ISBN}"
+name = "{Book-Title}"
+description = "{Book-Author} ({Publisher})"
+url = "https://openlibrary.org/isbn/{ISBN}"
+identifiers = { isbn = "{ISBN}" }
+
+[[entities]]
+file = "books/BX-Books.csv"
+kind = "person"
+id = "{Book-Author}"
+name = "{Book-Author}"
+description = "Author"
+require = ["Book-Author"]
+
+[[events]]
+file = "books/BX-Books.csv"
+id = "{ISBN}"
+entity = "book:{ISBN}"
+kind = "publication"
+label = "{Book-Title}"
+start = "{Year-Of-Publication}"
+require = ["Year-Of-Publication"]
+detail = { author = "{Book-Author}", publisher = "{Publisher}", isbn = "{ISBN}" }
+
+[[participants]]
+file = "books/BX-Books.csv"
+event = "{ISBN}"
+entity = "person:{Book-Author}"
+role = "author"
+require = ["Book-Author"]
