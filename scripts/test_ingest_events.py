@@ -834,6 +834,38 @@ class ScanScaleTest(IngestTest):
         self.syncer.sync(SOURCES["lahman"], force=True)
         self.assertEqual(self.count("SELECT COUNT(*) FROM event_lod"), before)
 
+    def test_span_lod_covers_every_bucket_a_span_overlaps(self) -> None:
+        self.sync_all()
+        # Aaron (1934-2021, Lahman) overlaps the 1930s through the 2020s.
+        buckets = [
+            r[0]
+            for r in self.conn.execute(
+                "SELECT bucket FROM span_lod JOIN events ON events.id = event_id "
+                "WHERE bucket_size = 10 AND events.external_id = 'aaronha01:life' "
+                "AND span_lod.category = 'baseball' ORDER BY bucket"
+            )
+        ]
+        self.assertEqual(buckets, list(range(1930, 2030, 10)))
+        # Ohtani is still playing: his career runs to the open-end cap.
+        last = self.conn.execute(
+            "SELECT max(bucket) FROM span_lod JOIN events ON events.id = event_id "
+            "WHERE bucket_size = 100 AND events.external_id = 'ohtansh01:career'"
+        ).fetchone()[0]
+        self.assertEqual(last, 2000)
+        # '*' rows rank across categories: the 1900s century has lives from
+        # several sources and categories, each capped at LOD_KEEP per source.
+        self.assertGreater(
+            self.count(
+                "SELECT COUNT(*) FROM span_lod WHERE bucket_size = 100 AND bucket = 1900 "
+                "AND category = '*'"
+            ),
+            0,
+        )
+        self.assertEqual(self.count("SELECT COUNT(*) FROM span_lod WHERE pos > 20"), 0)
+        self.assertGreater(
+            self.count("SELECT COUNT(*) FROM event_lod WHERE category = '*'"), 0
+        )
+
     def test_window_scan_uses_an_ordered_index(self) -> None:
         self.sync_all()
         plan = " ".join(

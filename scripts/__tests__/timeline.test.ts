@@ -139,16 +139,43 @@ describe("buildWindowQuery", () => {
 });
 
 describe("buildActiveQuery", () => {
-  it("asks the R*Tree for spans open at the window start that began earlier", () => {
+  it("serves notable spans from span_lod for plain windows, '*' without a category", () => {
+    const { sql, params } = buildActiveQuery(base);
+    expect(sql).toContain("FROM span_lod");
+    expect(sql).toContain("span_lod.category = '*'");
+    expect(sql).toContain("ORDER BY events.rank DESC");
+    // 31-year window -> 10-year buckets, 1950 floors to 1950.
+    expect(params).toEqual([10, 1950, 100, 1950, 1950, 100]);
+  });
+
+  it("uses the category rows and 100-year buckets for wide windows", () => {
     const { sql, params } = buildActiveQuery({
       ...base,
+      from: 1555,
+      to: 1980,
       categories: ["baseball"],
     });
+    expect(sql).toContain("span_lod.category IN (?)");
+    expect(params.slice(0, 2)).toEqual([100, 1500]);
+  });
+
+  it("falls back to the R*Tree point query when a filter needs it", () => {
+    const { sql, params } = buildActiveQuery({ ...base, match: '"aar"' });
     expect(sql).toContain("FROM events_span");
     expect(sql).toContain("events_span.start_year < ?");
     expect(sql).toContain("events_span.end_year >= ?");
     expect(sql).toContain("events.span = 1");
-    expect(params).toEqual([1950, 1950, "baseball", 100]);
+    expect(sql).toContain("ORDER BY events.rank DESC");
+    expect(params).toEqual([1950, 1950, '"aar"', 100]);
+  });
+});
+
+describe("join order", () => {
+  it("pins events as the outer loop so ordered index walks survive the planner", () => {
+    const { sql } = buildWindowQuery(base);
+    expect(sql).toContain("CROSS JOIN entities");
+    expect(sql).toContain("CROSS JOIN sources");
+    expect(sql).not.toMatch(/\n\s+JOIN sources/);
   });
 });
 
@@ -175,9 +202,10 @@ describe("buildOverviewQuery", () => {
     expect(params).toEqual([10, 1950, 1980, 5, "film"]);
   });
 
-  it("floors negative years", () => {
-    const { params } = buildOverviewQuery(-384, -300, 100, 3, [], []);
+  it("floors negative years and uses the '*' rows without a category", () => {
+    const { sql, params } = buildOverviewQuery(-384, -300, 100, 3, [], []);
     expect(params.slice(0, 3)).toEqual([100, -400, -300]);
+    expect(sql).toContain("event_lod.category = '*'");
   });
 });
 

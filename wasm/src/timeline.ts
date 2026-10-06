@@ -223,10 +223,23 @@ const EVENT_COLUMNS = `
            entities.url, sources.slug, entity_links.canonical_id, events.certainty,
            events.rank`;
 
+// CROSS JOIN pins the join order: the driving table (events, or a LOD
+// table) stays the outer loop. Left to itself the planner starts from the
+// seven-row sources table, which breaks the ordered index walk and sorts
+// every event in the window (29 seconds on a wide window of 6M events).
 const EVENT_JOINS = `
-      JOIN entities ON entities.id = events.entity_id
-      JOIN sources ON sources.id = events.source_id
+      CROSS JOIN entities ON entities.id = events.entity_id
+      CROSS JOIN sources ON sources.id = events.source_id
       LEFT JOIN entity_links ON entity_links.entity_id = entities.id`;
+
+/// Bucket size for span_lod given a window width.
+export function spanBucketSize(from: number, to: number): number {
+  return to - from <= 100 ? 10 : 100;
+}
+
+function floorBucket(year: number, size: number): number {
+  return year - (((year % size) + size) % size);
+}
 
 /// Events that START inside the window, in (start_year, id) order. With a
 /// category filter this walks events_by_category; without, events_by_start.
@@ -253,12 +266,56 @@ export function buildWindowQuery(q: TimelineQuery): {
 }
 
 /// Spans that began before the window and are still open at `from`: the
-/// lives, careers and runs that frame what starts inside it. R*Tree point
-/// query, bounded by `limit`.
+/// lives, careers and runs that frame what starts inside it.
+///
+/// Everyone alive at `from` is a huge set, so by default the top-ranked
+/// spans of the bucket containing `from` come from the precomputed
+/// `span_lod` (category rows, or '*' across categories). A name, kind or
+/// participant filter cannot be answered from the LOD and falls back to an
+/// R*Tree point query ordered by rank.
 export function buildActiveQuery(q: TimelineQuery): {
   sql: string;
   params: unknown[];
 } {
+  const precomputed =
+    q.match === null &&
+    q.participant === null &&
+    q.kinds.length === 0 &&
+    q.span !== false;
+  if (precomputed) {
+    const size = spanBucketSize(q.from, q.to);
+    const where = [
+      "span_lod.bucket_size = ?",
+      "span_lod.bucket = ?",
+      "span_lod.pos <= ?",
+      "events.start_year < ?",
+    ];
+    const params: unknown[] = [
+      size,
+      floorBucket(q.from, size),
+      q.limit,
+      q.from,
+    ];
+    if (q.categories.length > 0) {
+      where.push(`span_lod.category IN (${placeholders(q.categories.length)})`);
+      params.push(...q.categories);
+    } else {
+      where.push("span_lod.category = '*'");
+    }
+    if (q.sources.length > 0) {
+      where.push(`sources.slug IN (${placeholders(q.sources.length)})`);
+      params.push(...q.sources);
+    }
+    const sql = `
+    SELECT ${EVENT_COLUMNS}
+      FROM span_lod
+      CROSS JOIN events ON events.id = span_lod.event_id${EVENT_JOINS}
+     WHERE ${where.join("\n       AND ")}
+       AND coalesce(events.end_year, 9999) >= ?
+     ORDER BY events.rank DESC, events.id
+     LIMIT ?`;
+    return { sql, params: [...params, q.from, q.limit] };
+  }
   const { where, params } = buildFilters(q);
   const bounds = [
     "events_span.start_year < ?",
@@ -268,9 +325,9 @@ export function buildActiveQuery(q: TimelineQuery): {
   const sql = `
     SELECT ${EVENT_COLUMNS}
       FROM events_span
-      JOIN events ON events.id = events_span.id${EVENT_JOINS}
+      CROSS JOIN events ON events.id = events_span.id${EVENT_JOINS}
      WHERE ${[...bounds, ...where].join("\n       AND ")}
-     ORDER BY events.start_year, events.id
+     ORDER BY events.rank DESC, events.id
      LIMIT ?`;
   return { sql, params: [q.from, q.from, ...params, q.limit] };
 }
@@ -285,7 +342,7 @@ export function buildCountQuery(
     SELECT count(*) FROM (
       SELECT 1
         FROM events
-        JOIN sources ON sources.id = events.source_id
+        CROSS JOIN sources ON sources.id = events.source_id
        WHERE ${["events.start_year BETWEEN ? AND ?", ...where].join("\n       AND ")}
        LIMIT ?)`;
   return { sql, params: [q.from, q.to, ...params, cap] };
@@ -305,11 +362,13 @@ export function buildOverviewQuery(
     "event_lod.bucket BETWEEN ? AND ?",
     "event_lod.pos <= ?",
   ];
-  const floorFrom = from - ((((from % bucket) + bucket) % bucket) % bucket);
-  const params: unknown[] = [bucket, floorFrom, to, per];
+  const params: unknown[] = [bucket, floorBucket(from, bucket), to, per];
   if (categories.length > 0) {
     where.push(`event_lod.category IN (${placeholders(categories.length)})`);
     params.push(...categories);
+  } else {
+    // '*' rows hold the top events per bucket across all categories.
+    where.push("event_lod.category = '*'");
   }
   if (sources.length > 0) {
     where.push(`sources.slug IN (${placeholders(sources.length)})`);
@@ -318,7 +377,7 @@ export function buildOverviewQuery(
   const sql = `
     SELECT ${EVENT_COLUMNS}, event_lod.bucket
       FROM event_lod
-      JOIN events ON events.id = event_lod.event_id${EVENT_JOINS}
+      CROSS JOIN events ON events.id = event_lod.event_id${EVENT_JOINS}
      WHERE ${where.join("\n       AND ")}
      ORDER BY event_lod.bucket, events.rank DESC, events.id`;
   return { sql, params };

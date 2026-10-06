@@ -468,10 +468,14 @@ WHERE source_id = ?
 RANK_CLEANUP = "DROP TABLE IF EXISTS rank_credits; DROP TABLE IF EXISTS rank_owner;"
 
 LOD_SIZES = (1, 10, 100)
+SPAN_LOD_SIZES = (10, 100)
 LOD_KEEP = 20
+#: Open-ended spans (still alive, still running) are treated as ending here.
+LOD_OPEN_END = 2030
 
-# Top LOD_KEEP events per (bucket, category) for one bucket size and source.
-# The bucket expression floors correctly for negative years.
+# Top LOD_KEEP events per (bucket, category) for one bucket size and source,
+# plus the same across all categories under category '*'. The bucket
+# expression floors correctly for negative years.
 INSERT_LOD = """
 INSERT INTO event_lod (bucket_size, bucket, category, source_id, pos, event_id)
 SELECT ?, bucket, category, source_id, pos, id FROM (
@@ -480,6 +484,54 @@ SELECT ?, bucket, category, source_id, pos, id FROM (
            PARTITION BY start_year - (((start_year % ?) + ?) % ?), category
            ORDER BY rank DESC, id) AS pos
   FROM events WHERE source_id = ?)
+WHERE pos <= ?
+"""
+INSERT_LOD_ALL = """
+INSERT INTO event_lod (bucket_size, bucket, category, source_id, pos, event_id)
+SELECT ?, bucket, '*', source_id, pos, id FROM (
+  SELECT start_year - (((start_year % ?) + ?) % ?) AS bucket, source_id, id,
+         row_number() OVER (
+           PARTITION BY start_year - (((start_year % ?) + ?) % ?)
+           ORDER BY rank DESC, id) AS pos
+  FROM events WHERE source_id = ?)
+WHERE pos <= ?
+"""
+
+# Every span contributes to each bucket it overlaps (a 1934-2021 life to the
+# 1930s through the 2020s); the recursive CTE does the expansion. Rows are
+# ranked per (bucket, category) and per bucket across categories ('*').
+INSERT_SPAN_LOD = """
+WITH RECURSIVE b(event_id, bucket, last, category, source_id, rank) AS (
+  SELECT id,
+         start_year - (((start_year % ?) + ?) % ?),
+         min(coalesce(end_year, ?), ?) - (((min(coalesce(end_year, ?), ?) % ?) + ?) % ?),
+         category, source_id, rank
+  FROM events WHERE span = 1 AND source_id = ?
+  UNION ALL
+  SELECT event_id, bucket + ?, last, category, source_id, rank FROM b WHERE bucket + ? <= last
+)
+INSERT INTO span_lod (bucket_size, bucket, category, source_id, pos, event_id)
+SELECT ?, bucket, category, source_id, pos, event_id FROM (
+  SELECT event_id, bucket, category, source_id,
+         row_number() OVER (PARTITION BY bucket, category ORDER BY rank DESC, event_id) AS pos
+  FROM b)
+WHERE pos <= ?
+"""
+INSERT_SPAN_LOD_ALL = """
+WITH RECURSIVE b(event_id, bucket, last, source_id, rank) AS (
+  SELECT id,
+         start_year - (((start_year % ?) + ?) % ?),
+         min(coalesce(end_year, ?), ?) - (((min(coalesce(end_year, ?), ?) % ?) + ?) % ?),
+         source_id, rank
+  FROM events WHERE span = 1 AND source_id = ?
+  UNION ALL
+  SELECT event_id, bucket + ?, last, source_id, rank FROM b WHERE bucket + ? <= last
+)
+INSERT INTO span_lod (bucket_size, bucket, category, source_id, pos, event_id)
+SELECT ?, bucket, '*', source_id, pos, event_id FROM (
+  SELECT event_id, bucket, source_id,
+         row_number() OVER (PARTITION BY bucket ORDER BY rank DESC, event_id) AS pos
+  FROM b)
 WHERE pos <= ?
 """
 
@@ -769,10 +821,21 @@ class Syncer:
         self.conn.executescript(RANK_CLEANUP)
         self.conn.execute("DELETE FROM event_lod WHERE source_id = ?", (source_id,))
         for size in LOD_SIZES:
-            self.conn.execute(
-                INSERT_LOD,
-                (size, size, size, size, size, size, size, source_id, LOD_KEEP),
+            args = (size, size, size, size, size, size, size, source_id, LOD_KEEP)
+            self.conn.execute(INSERT_LOD, args)
+            self.conn.execute(INSERT_LOD_ALL, args)
+        self.conn.execute("DELETE FROM span_lod WHERE source_id = ?", (source_id,))
+        end = LOD_OPEN_END
+        for size in SPAN_LOD_SIZES:
+            args = (
+                *(size, size, size),  # start bucket
+                *(end, end, end, end, size, size, size),  # last bucket
+                source_id,
+                *(size, size),  # recursion step and bound
+                *(size, LOD_KEEP),
             )
+            self.conn.execute(INSERT_SPAN_LOD, args)
+            self.conn.execute(INSERT_SPAN_LOD_ALL, args)
 
     def rerank(self) -> int:
         """Recompute rank and LOD for every source (after the scale migration)."""
