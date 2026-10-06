@@ -1,10 +1,12 @@
 """Sync engine shared by every source adapter.
 
-A :class:`Source` describes where its files live and yields :class:`Entity`
-and :class:`Event` rows. :class:`Syncer` fingerprints the files, skips sources
-that have not changed, stages the rows, upserts them into ``entities`` and
-``events``, removes rows the source no longer produces, and records the run
-in ``source_syncs``.
+A :class:`Source` describes where its files live and yields :class:`Entity`,
+:class:`Event` and :class:`Participant` rows. :class:`Syncer` fingerprints the
+files, skips sources that have not changed, stages the rows, upserts them
+into ``entities``, ``events`` and ``event_participants``, removes rows the
+source no longer produces, refreshes the per-year density table, and records
+the run in ``source_syncs``. :meth:`Syncer.link` resolves the same person
+seen by several sources to one canonical entity.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20_000
+CANONICAL_SOURCE = "wikidata_age"
 
 
 def iso_date(
@@ -80,6 +83,18 @@ class Event:
     detail: dict[str, Any] | None = None
     #: True for a duration (life, career, run); an open end then means ongoing.
     span: bool = False
+    #: 'exact', 'circa' or 'unknown'.
+    certainty: str = "exact"
+
+
+@dataclass(frozen=True)
+class Participant:
+    """An entity that took part in an event owned by another entity."""
+
+    event_external_id: str
+    entity_kind: str
+    entity_external_id: str
+    role: str
 
 
 @dataclass
@@ -101,15 +116,22 @@ class SyncResult:
     entities_written: int = 0
     events_written: int = 0
     events_deleted: int = 0
+    participants_written: int = 0
+
+
+@dataclass
+class LinkResult:
+    by_wikidata: int
+    by_name_dates: int
 
 
 class Source(ABC):
     """A dataset that contributes entities and events.
 
-    Subclasses set the class attributes and implement ``entities`` and
-    ``events``. Sources that build rows from other tables (``kind ==
-    'derived'``) may instead override ``load`` and write straight into the
-    ``stage_entities`` and ``stage_events`` temp tables.
+    Subclasses set the class attributes and implement ``entities``, ``events``
+    and optionally ``participants``. Sources that build rows from other
+    tables (``kind == 'derived'``) may instead override ``load`` and write
+    straight into the ``stage_*`` temp tables.
     """
 
     slug: str
@@ -154,10 +176,14 @@ class Source(ABC):
     def events(self, ctx: SyncContext) -> Iterable[Event]:
         return ()
 
+    def participants(self, ctx: SyncContext) -> Iterable[Participant]:
+        return ()
+
     def load(self, ctx: SyncContext) -> None:
         """Write this source's rows into the staging tables."""
         _stage_entities(ctx.conn, self.entities(ctx))
         _stage_events(ctx.conn, self.events(ctx))
+        _stage_participants(ctx.conn, self.participants(ctx))
 
 
 def read_csv(path: Path, limit: int | None = None) -> Iterator[dict[str, str]]:
@@ -195,7 +221,7 @@ def _stage_events(conn: sqlite3.Connection, rows: Iterable[Event]) -> None:
     for batch in _batched(rows, BATCH_SIZE):
         conn.executemany(
             "INSERT OR REPLACE INTO stage_events VALUES "
-            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 (
                     e.external_id,
@@ -211,8 +237,20 @@ def _stage_events(conn: sqlite3.Connection, rows: Iterable[Event]) -> None:
                     e.category,
                     json.dumps(e.detail, ensure_ascii=False) if e.detail else None,
                     1 if e.span else 0,
+                    e.certainty,
                 )
                 for e in batch
+            ],
+        )
+
+
+def _stage_participants(conn: sqlite3.Connection, rows: Iterable[Participant]) -> None:
+    for batch in _batched(rows, BATCH_SIZE):
+        conn.executemany(
+            "INSERT OR IGNORE INTO stage_participants VALUES (?, ?, ?, ?)",
+            [
+                (p.event_external_id, p.entity_kind, p.entity_external_id, p.role)
+                for p in batch
             ],
         )
 
@@ -240,10 +278,28 @@ CREATE TEMP TABLE stage_events (
   end_year INTEGER,
   category TEXT NOT NULL,
   detail TEXT,
-  span INTEGER NOT NULL
+  span INTEGER NOT NULL,
+  certainty TEXT NOT NULL
+) WITHOUT ROWID;
+CREATE TEMP TABLE stage_participants (
+  event_external_id TEXT NOT NULL,
+  entity_kind TEXT NOT NULL,
+  entity_external_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  PRIMARY KEY (event_external_id, entity_kind, entity_external_id, role)
 ) WITHOUT ROWID;
 """
 
+DROP_STAGE = """
+DROP TABLE IF EXISTS stage_entities;
+DROP TABLE IF EXISTS stage_events;
+DROP TABLE IF EXISTS stage_participants;
+"""
+
+# The upserts walk the staging tables and probe the real tables through their
+# UNIQUE indexes. CROSS JOIN pins that order: once ANALYZE statistics exist
+# for the big tables, the planner would otherwise scan them and probe the
+# stat-less temp tables, turning a 30-second load into hours.
 UPSERT_ENTITIES = """
 INSERT INTO entities (source_id, external_id, kind, name, description, wikidata_id, url)
 SELECT ?, external_id, kind, name, description, wikidata_id, url FROM stage_entities
@@ -257,11 +313,13 @@ ON CONFLICT (source_id, kind, external_id) DO UPDATE SET
 
 UPSERT_EVENTS = """
 INSERT INTO events (source_id, entity_id, external_id, kind, label, start_date,
-                    end_date, precision, start_year, end_year, category, detail, span)
+                    end_date, precision, start_year, end_year, category, detail,
+                    span, certainty)
 SELECT ?, n.id, s.external_id, s.kind, s.label, s.start_date, s.end_date,
-       s.precision, s.start_year, s.end_year, s.category, s.detail, s.span
+       s.precision, s.start_year, s.end_year, s.category, s.detail, s.span,
+       s.certainty
 FROM stage_events s
-JOIN entities n
+CROSS JOIN entities n
   ON n.source_id = ? AND n.kind = s.entity_kind AND n.external_id = s.entity_external_id
 WHERE true
 ON CONFLICT (source_id, external_id) DO UPDATE SET
@@ -275,7 +333,8 @@ ON CONFLICT (source_id, external_id) DO UPDATE SET
   end_year = excluded.end_year,
   category = excluded.category,
   detail = excluded.detail,
-  span = excluded.span
+  span = excluded.span,
+  certainty = excluded.certainty
 """
 
 DELETE_STALE_EVENTS = """
@@ -288,6 +347,67 @@ DELETE_ORPHAN_ENTITIES = """
 DELETE FROM entities
 WHERE source_id = ?
   AND id NOT IN (SELECT entity_id FROM events WHERE source_id = ?)
+"""
+
+# Participants are fully derived from the source, so they are rebuilt rather
+# than diffed.
+DELETE_PARTICIPANTS = """
+DELETE FROM event_participants
+WHERE event_id IN (SELECT id FROM events WHERE source_id = ?)
+"""
+
+INSERT_PARTICIPANTS = """
+INSERT OR IGNORE INTO event_participants (event_id, entity_id, role)
+SELECT e.id, n.id, s.role
+FROM stage_participants s
+CROSS JOIN events e ON e.source_id = ? AND e.external_id = s.event_external_id
+CROSS JOIN entities n
+  ON n.source_id = ? AND n.kind = s.entity_kind AND n.external_id = s.entity_external_id
+"""
+
+INSERT_DENSITY = """
+INSERT INTO event_density (source_id, category, year, count)
+SELECT source_id, category, start_year, count(*)
+FROM events WHERE source_id = ?
+GROUP BY source_id, category, start_year
+"""
+
+# Entities from any source that carry the same QID as a canonical-source
+# entity are that entity.
+LINK_BY_WIKIDATA = """
+INSERT OR REPLACE INTO entity_links (entity_id, canonical_id, method, confidence)
+SELECT e.id, c.id, 'wikidata_id', 1.0
+FROM entities e
+JOIN entities c ON c.wikidata_id = e.wikidata_id AND c.source_id = ?
+WHERE e.wikidata_id IS NOT NULL AND e.source_id <> c.source_id
+"""
+
+# People with the same name, birth year and death year, when that
+# combination is unique within both sources, are the same person.
+LINK_BY_NAME_DATES = """
+WITH lives AS (
+  SELECT entities.id AS entity_id, entities.source_id,
+         lower(trim(entities.name)) AS name,
+         events.start_year AS born, events.end_year AS died
+  FROM events
+  JOIN entities ON entities.id = events.entity_id
+  WHERE events.kind = 'life' AND entities.kind = 'person'
+),
+unique_keys AS (
+  SELECT source_id, name, born, died, min(entity_id) AS entity_id
+  FROM lives
+  GROUP BY source_id, name, born, died
+  HAVING count(*) = 1
+),
+canon AS (SELECT * FROM unique_keys WHERE source_id = ?)
+INSERT OR IGNORE INTO entity_links (entity_id, canonical_id, method, confidence)
+SELECT other.entity_id, canon.entity_id, 'name_dates',
+       CASE WHEN canon.died IS NOT NULL THEN 0.9 ELSE 0.7 END
+FROM unique_keys other
+JOIN canon ON canon.name = other.name
+          AND canon.born = other.born
+          AND canon.died IS other.died
+WHERE other.source_id <> canon.source_id
 """
 
 
@@ -305,6 +425,14 @@ class Syncer:
         conn.execute("PRAGMA synchronous = NORMAL")
         conn.execute("PRAGMA temp_store = MEMORY")
         conn.execute("PRAGMA cache_size = -262144")
+        # A sync that was killed mid-way left its row as 'running'; its data
+        # was rolled back with the transaction.
+        conn.execute(
+            "UPDATE source_syncs SET status = 'failed', finished = ?, "
+            "message = 'interrupted' WHERE status = 'running'",
+            (int(time.time()),),
+        )
+        conn.commit()
 
     def register(self, source: Source) -> int:
         """Ensure the source row exists and return its id."""
@@ -449,9 +577,7 @@ class Syncer:
 
     def _run(self, source: Source, ctx: SyncContext) -> SyncResult:
         conn = self.conn
-        conn.executescript(
-            "DROP TABLE IF EXISTS stage_entities; DROP TABLE IF EXISTS stage_events;"
-        )
+        conn.executescript(DROP_STAGE)
         conn.executescript(STAGE_SCHEMA)
 
         t0 = time.time()
@@ -470,27 +596,70 @@ class Syncer:
 
         # The staging inserts above opened an implicit transaction; the upserts
         # join it so a failure anywhere rolls back everything.
-        entities_written = conn.execute(UPSERT_ENTITIES, (ctx.source_id,)).rowcount
-        events_written = conn.execute(
-            UPSERT_EVENTS, (ctx.source_id, ctx.source_id)
-        ).rowcount
-        events_deleted = conn.execute(DELETE_STALE_EVENTS, (ctx.source_id,)).rowcount
-        conn.execute(DELETE_ORPHAN_ENTITIES, (ctx.source_id, ctx.source_id))
+        sid = ctx.source_id
+        entities_written = conn.execute(UPSERT_ENTITIES, (sid,)).rowcount
+        events_written = conn.execute(UPSERT_EVENTS, (sid, sid)).rowcount
+        events_deleted = conn.execute(DELETE_STALE_EVENTS, (sid,)).rowcount
+        conn.execute(DELETE_ORPHAN_ENTITIES, (sid, sid))
+        conn.execute(DELETE_PARTICIPANTS, (sid,))
+        participants_written = conn.execute(INSERT_PARTICIPANTS, (sid, sid)).rowcount
+        conn.execute("DELETE FROM event_density WHERE source_id = ?", (sid,))
+        conn.execute(INSERT_DENSITY, (sid,))
         conn.execute("INSERT INTO entities_fts(entities_fts) VALUES ('rebuild')")
         conn.commit()
-        conn.executescript("DROP TABLE stage_entities; DROP TABLE stage_events;")
+        conn.executescript(DROP_STAGE)
         # Refresh planner statistics (STAT4 histograms) for the tables that
         # just changed, then let SQLite decide whether anything else is stale.
-        conn.executescript("ANALYZE events; ANALYZE entities; PRAGMA optimize;")
+        conn.executescript(
+            "ANALYZE events; ANALYZE entities; ANALYZE event_participants; "
+            "PRAGMA optimize;"
+        )
 
         unresolved = staged_events - events_written
         message = f"{events_written:,} events upserted, {events_deleted:,} removed"
+        if participants_written:
+            message += f", {participants_written:,} participants"
         if unresolved > 0:
             message += f", {unresolved:,} skipped (unknown entity)"
         logger.info("%s: %s in %.1fs", source.slug, message, time.time() - t0)
         return SyncResult(
-            source.slug, "ok", message, entities_written, events_written, events_deleted
+            source.slug,
+            "ok",
+            message,
+            entities_written,
+            events_written,
+            events_deleted,
+            participants_written,
         )
+
+    def link(self) -> LinkResult:
+        """Rebuild ``entity_links``: resolve duplicates to canonical entities.
+
+        The canonical source is Wikidata (QIDs are the cross-source key).
+        Shared QIDs link with certainty; otherwise a person links when name,
+        birth year and death year match and that combination is unique in
+        both sources, so common names never link by accident.
+        """
+        row = self.conn.execute(
+            "SELECT id FROM sources WHERE slug = ?", (CANONICAL_SOURCE,)
+        ).fetchone()
+        if row is None:
+            return LinkResult(0, 0)
+        canonical = int(row[0])
+        self.conn.execute("DELETE FROM entity_links")
+        # cursor.rowcount is -1 for statements that start with WITH, so ask
+        # SQLite directly.
+        self.conn.execute(LINK_BY_WIKIDATA, (canonical,))
+        by_wikidata = int(self.conn.execute("SELECT changes()").fetchone()[0])
+        self.conn.execute(LINK_BY_NAME_DATES, (canonical,))
+        by_name = int(self.conn.execute("SELECT changes()").fetchone()[0])
+        self.conn.commit()
+        logger.info(
+            "linked %s entities by QID and %s by name and dates",
+            f"{by_wikidata:,}",
+            f"{by_name:,}",
+        )
+        return LinkResult(by_wikidata, by_name)
 
     def _record_files(self, source: Source, source_id: int) -> None:
         self.conn.execute("DELETE FROM source_files WHERE source_id = ?", (source_id,))

@@ -6,10 +6,12 @@ Usage:
     python3 scripts/ingest_events.py check               # which sources changed
     python3 scripts/ingest_events.py sync [SLUG ...]     # import changed sources
     python3 scripts/ingest_events.py sync --force imdb   # re-import regardless
+    python3 scripts/ingest_events.py link                # rebuild entity_links
 
 Sources are skipped when their input files are unchanged since the last
 successful sync. The IMDB source reads the already-imported ``titles`` and
-``persons`` tables, so run ``import_imdb_sqlite.py`` first.
+``persons`` tables, so run ``import_imdb_sqlite.py`` first. After any source
+changes, entity links (the same person across sources) are rebuilt.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 
     sub.add_parser("list", help="show every source and its last sync")
     sub.add_parser("check", help="exit 1 if any source has changed files")
+    sub.add_parser("link", help="resolve the same person across sources (entity_links)")
 
     sync = sub.add_parser("sync", help="import sources whose files changed")
     sync.add_argument("slugs", nargs="*", help="sources to sync (default: all)")
@@ -93,13 +96,26 @@ def cmd_sync(syncer: Syncer, args: argparse.Namespace) -> int:
         options["imdb_min_votes"] = args.imdb_min_votes
 
     failed = False
+    synced = False
     for slug in slugs:
         result = syncer.sync(
             SOURCES[slug], force=args.force, limit=args.limit, options=options
         )
         print(f"{slug:<14}{result.status:<10}{result.message}")
         failed |= result.status == "failed"
+        synced |= result.status == "ok"
+    if synced:
+        cmd_link(syncer)
     return 1 if failed else 0
+
+
+def cmd_link(syncer: Syncer) -> int:
+    links = syncer.link()
+    print(
+        f"{'links':<14}{'ok':<10}{links.by_wikidata:,} by QID, "
+        f"{links.by_name_dates:,} by name and dates"
+    )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -119,6 +135,8 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_list(syncer)
         if args.command == "check":
             return cmd_check(syncer)
+        if args.command == "link":
+            return cmd_link(syncer)
         return cmd_sync(syncer, args)
     finally:
         conn.close()

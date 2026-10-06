@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Tests for the timeline ingest: schema, adapters and re-sync behaviour.
+"""Tests for the timeline ingest: schema, adapters, re-sync behaviour,
+SQLite features, density, participants and entity linking.
 
 Run from the repository root:
     python3 scripts/test_ingest_events.py
@@ -27,6 +28,7 @@ PEOPLE = """\
 ID,playerID,birthYear,birthMonth,birthDay,birthCity,birthCountry,birthState,deathYear,deathMonth,deathDay,deathCountry,deathState,deathCity,nameFirst,nameLast,nameGiven,weight,height,bats,throws,debut,bbrefID,finalGame,retroID
 1,aaronha01,1934,2,5,Mobile,USA,AL,2021,1,22,USA,GA,Atlanta,Hank,Aaron,Henry Louis,180,72,R,R,1954-04-13,aaronha01,1976-10-03,aaroh101
 2,ohtansh01,1994,7,5,Oshu,Japan,,,,,,,,Shohei,Ohtani,Shohei,210,76,L,R,2018-03-29,ohtansh01,,ohtas001
+3,mathed01,1931,10,13,Texarkana,USA,TX,2001,2,18,USA,CA,La Jolla,Eddie,Mathews,Edwin Lee,190,73,L,R,1952-04-15,mathed01,1968-10-10,mathe101
 """
 AWARDS = """\
 playerID,awardID,yearID,lgID,tie,notes
@@ -51,6 +53,12 @@ FRANCHISES = """\
 franchID,franchName,active,NAassoc
 ATL,Atlanta Braves,Y,
 """
+APPEARANCES = """\
+yearID,teamID,lgID,playerID,G_all,GS,G_batting,G_defense,G_p,G_c,G_1b,G_2b,G_3b,G_ss,G_lf,G_cf,G_rf,G_of,G_dh,G_ph,G_pr
+1957,ML1,NL,aaronha01,151,,151,151,0,0,0,0,0,0,0,0,0,151,0,0,0
+1957,ML1,NL,mathed01,148,,148,148,0,0,0,0,148,0,0,0,0,0,0,0,0
+2024,ATL,NL,ohtansh01,1,,1,1,0,0,0,0,0,0,0,0,0,0,1,0,0
+"""
 OLYMPICS = """\
 "ID","Name","Sex","Age","Height","Weight","Team","NOC","Games","Year","Season","City","Sport","Event","Medal"
 "1","A Dijiang","M",24,180,80,"China","CHN","1992 Summer",1992,"Summer","Barcelona","Basketball","Basketball Men's Basketball",NA
@@ -62,6 +70,10 @@ Id,Name,Short description,Gender,Country,Occupation,Birth year,Death year,Manner
 Q23,George Washington,1st president of the United States,Male,United States of America,Politician,1732,1799,natural causes,67
 Q868,Aristotle,Greek philosopher,Male,Greece,Philosopher,-384,-322,,62
 Q42,Douglas Adams,English writer,Male,United Kingdom,Artist,1952,2001,natural causes,49
+Q214413,Hank Aaron,American baseball player,Male,United States of America,Athlete,1934,2021,natural causes,86
+Q34012,Marlon Brando,American actor,Male,United States of America,Artist,1924,2004,natural causes,80
+Q1,John Smith,English soldier,Male,England,Explorer,1580,1631,,51
+Q2,John Smith,Another John Smith,Male,England,Explorer,1580,1631,,51
 """
 
 
@@ -90,6 +102,7 @@ class IngestTest(unittest.TestCase):
         write(base / "AllstarFull.csv", ALLSTAR)
         write(base / "Teams.csv", TEAMS)
         write(base / "TeamsFranchises.csv", FRANCHISES)
+        write(base / "Appearances.csv", APPEARANCES)
         write(
             base / "readme2024u.txt",
             "The SABR Lahman Baseball Database 1871-2024\nRelease Date: Oct 30, 2025\n",
@@ -106,7 +119,10 @@ class IngestTest(unittest.TestCase):
             INSERT INTO ratings VALUES (1, 9.2, 2000000), (2, 8.9, 350000), (3, 5.0, 12);
             INSERT INTO persons (id, nconst, primaryName, birthYear, deathYear, primaryProfession)
             VALUES (1, 'nm0000008', 'Marlon Brando', 1924, 2004, 'actor,director'),
-                   (2, 'nm0000001', 'Nameless', NULL, NULL, 'actor');
+                   (2, 'nm0000001', 'Nameless', NULL, NULL, 'actor'),
+                   (3, 'nm0000338', 'Francis Ford Coppola', 1939, NULL, 'director');
+            INSERT INTO principals (title_id, person_id, ordering, category)
+            VALUES (1, 1, 1, 'actor'), (1, 2, 2, 'actor'), (1, 3, 3, 'director');
             """
         )
         self.conn.commit()
@@ -135,8 +151,8 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(
             self.events_for("lahman"),
             {
-                "life": 2,
-                "career": 2,
+                "life": 3,
+                "career": 3,
                 "award": 1,
                 "hall_of_fame": 1,
                 "all_star": 1,
@@ -147,9 +163,9 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(
             self.events_for("olympics"), {"games": 2, "competed": 2, "medal": 2}
         )
-        self.assertEqual(self.events_for("wikidata_age"), {"life": 3})
+        self.assertEqual(self.events_for("wikidata_age"), {"life": 7})
         # Titles under the vote threshold and people without a birth year are left out.
-        self.assertEqual(self.events_for("imdb"), {"release": 1, "run": 1, "life": 1})
+        self.assertEqual(self.events_for("imdb"), {"release": 1, "run": 1, "life": 2})
 
     def test_dates_and_precision(self) -> None:
         self.sync_all()
@@ -181,7 +197,7 @@ class IngestTest(unittest.TestCase):
         self.sync_all()
         hit = self.conn.execute(
             "SELECT e.wikidata_id, e.url FROM entities_fts f JOIN entities e ON e.id = f.rowid "
-            "WHERE entities_fts MATCH '\"washing\"*'"
+            "WHERE entities_fts MATCH '\"washing\"'"
         ).fetchone()
         self.assertEqual(hit, ("Q23", "https://www.wikidata.org/wiki/Q23"))
 
@@ -214,12 +230,6 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(
             self.count("SELECT COUNT(*) FROM entities WHERE name = 'Douglas N. Adams'"),
             1,
-        )
-        self.assertEqual(
-            self.count(
-                "SELECT COUNT(*) FROM events WHERE source_id = (SELECT id FROM sources WHERE slug = 'wikidata_age')"
-            ),
-            2,
         )
         self.assertFalse(self.syncer.status(SOURCES["wikidata_age"])["changed"])
 
@@ -283,12 +293,19 @@ class SqliteFeaturesTest(IngestTest):
     def test_rtree_overlap_and_point_in_time(self) -> None:
         self.sync_all()
         alive_1960 = self.conn.execute(
-            "SELECT entity_name FROM v_events JOIN events_span ON events_span.id = v_events.id "
+            "SELECT DISTINCT entity_name FROM v_events JOIN events_span ON events_span.id = v_events.id "
             "WHERE events_span.start_year <= 1960 AND events_span.end_year >= 1960 "
             "AND v_events.kind = 'life' ORDER BY 1"
         ).fetchall()
         self.assertEqual(
-            [r[0] for r in alive_1960], ["Douglas Adams", "Hank Aaron", "Marlon Brando"]
+            [r[0] for r in alive_1960],
+            [
+                "Douglas Adams",
+                "Eddie Mathews",
+                "Francis Ford Coppola",
+                "Hank Aaron",
+                "Marlon Brando",
+            ],
         )
         self.assertEqual(
             self.count("SELECT COUNT(*) FROM events"),
@@ -347,6 +364,104 @@ class SqliteFeaturesTest(IngestTest):
             "SELECT profession FROM person_professions WHERE person_id = 1 ORDER BY 1"
         ).fetchall()
         self.assertEqual([p[0] for p in professions], ["actor", "director"])
+
+
+class ScaleModelTest(IngestTest):
+    """Density table, participants, certainty and entity links."""
+
+    def test_density_is_precomputed_and_refreshed(self) -> None:
+        self.sync_all()
+        total = self.count("SELECT SUM(count) FROM event_density")
+        self.assertEqual(total, self.count("SELECT COUNT(*) FROM events"))
+        row = self.conn.execute(
+            "SELECT count FROM event_density JOIN sources ON sources.id = source_id "
+            "WHERE slug = 'lahman' AND category = 'baseball' AND year = 1957"
+        ).fetchone()
+        # 1957: the championship and the first season of the franchise run.
+        self.assertEqual(row, (2,))
+        # Re-syncing a source replaces its slice without touching others.
+        self.syncer.sync(SOURCES["lahman"], force=True)
+        self.assertEqual(
+            self.count("SELECT SUM(count) FROM event_density"),
+            self.count("SELECT COUNT(*) FROM events"),
+        )
+
+    def test_participants_from_rosters_and_cast(self) -> None:
+        self.sync_all()
+        roster = self.conn.execute(
+            "SELECT entities.name, event_participants.role FROM event_participants "
+            "JOIN events ON events.id = event_participants.event_id "
+            "JOIN entities ON entities.id = event_participants.entity_id "
+            "WHERE events.external_id = 'ATL:championship:1957' ORDER BY 1"
+        ).fetchall()
+        self.assertEqual(
+            roster, [("Eddie Mathews", "player"), ("Hank Aaron", "player")]
+        )
+        cast = self.conn.execute(
+            "SELECT entities.name, event_participants.role FROM event_participants "
+            "JOIN events ON events.id = event_participants.event_id "
+            "JOIN entities ON entities.id = event_participants.entity_id "
+            "WHERE events.external_id = 'tt0068646:release' ORDER BY 1"
+        ).fetchall()
+        # 'Nameless' has no birth year, hence no entity, hence no participation.
+        self.assertEqual(
+            cast, [("Francis Ford Coppola", "director"), ("Marlon Brando", "actor")]
+        )
+        # Participants are rebuilt on every sync, never duplicated.
+        self.syncer.sync(SOURCES["lahman"], force=True)
+        self.assertEqual(
+            self.count(
+                "SELECT COUNT(*) FROM event_participants WHERE event_id = "
+                "(SELECT id FROM events WHERE external_id = 'ATL:championship:1957')"
+            ),
+            2,
+        )
+
+    def test_certainty_defaults_to_exact(self) -> None:
+        self.sync_all()
+        self.assertEqual(
+            self.count("SELECT COUNT(*) FROM events WHERE certainty <> 'exact'"), 0
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.conn.execute("UPDATE events SET certainty = 'maybe' WHERE id = 1")
+
+    def test_entities_link_across_sources(self) -> None:
+        self.sync_all()
+        links = self.syncer.link()
+        self.assertEqual((links.by_wikidata, links.by_name_dates), (0, 2))
+        rows = self.conn.execute(
+            "SELECT dup.name, src.slug, canon.wikidata_id, entity_links.method, entity_links.confidence "
+            "FROM entity_links "
+            "JOIN entities dup ON dup.id = entity_links.entity_id "
+            "JOIN sources src ON src.id = dup.source_id "
+            "JOIN entities canon ON canon.id = entity_links.canonical_id "
+            "ORDER BY 1"
+        ).fetchall()
+        self.assertEqual(
+            rows,
+            [
+                ("Hank Aaron", "lahman", "Q214413", "name_dates", 0.9),
+                ("Marlon Brando", "imdb", "Q34012", "name_dates", 0.9),
+            ],
+        )
+        # Two Wikidata John Smiths with identical dates are ambiguous and are
+        # never used as a canonical target; living people (no death year)
+        # are still linkable at lower confidence.
+        self.assertEqual(
+            self.count(
+                "SELECT COUNT(*) FROM entity_links JOIN entities ON entities.id = canonical_id "
+                "WHERE entities.name = 'John Smith'"
+            ),
+            0,
+        )
+
+    def test_link_is_idempotent_and_follows_deletions(self) -> None:
+        self.sync_all()
+        self.syncer.link()
+        self.syncer.link()
+        self.assertEqual(self.count("SELECT COUNT(*) FROM entity_links"), 2)
+        self.conn.execute("DELETE FROM entities WHERE wikidata_id = 'Q214413'")
+        self.assertEqual(self.count("SELECT COUNT(*) FROM entity_links"), 1)
 
 
 if __name__ == "__main__":

@@ -226,18 +226,39 @@ sources.
 ### Timeline API
 
 `GET /timeline` (in `wasm/src/timeline.ts`) returns events that
-overlap a year range, with filters for `category`, `source`, `kind`, `span`
-and an entity-name substring `q`. Pass `anchor=<entity id>` to get every
-event's offset in years (and days, at day precision) from that entity's life,
-career or run. `from=1972&to=1972&span=1` answers "what was going on in
-1972". `GET /timeline/density` returns counts per year bucket and category for
-histogram strips.
+overlap a year range, with filters for `category`, `source`, `kind`, `span`,
+an entity-name substring `q`, and `participant=<entity id>` for events an
+entity owns or took part in. Pass `anchor=<entity id>` to get every event's
+offset in years (and days, at day precision) from that entity's life, career
+or run. `from=1972&to=1972&span=1` answers "what was going on in 1972". The
+`total` is counted separately and capped (`totalCapped: true` means "at
+least"), so an unfiltered window over millions of events stays fast.
+
+- `GET /timeline/density` returns counts per year bucket and category from
+  the precomputed `event_density` table, so histogram strips cost the same
+  at any zoom level.
+- `GET /timeline/participants?event=<id>` lists who took part in an event:
+  a film's cast and crew, a World Series roster.
+- `GET /timeline/links?entity=<id>` resolves an entity to its canonical
+  record and lists every source's version of it.
 
 ```bash
 curl -g "http://localhost:4000/timeline?from=1950&to=1960&category=baseball&kind=championship"
 curl -g "http://localhost:4000/timeline?q=aaron&anchor=24023&limit=50"
+curl -g "http://localhost:4000/timeline?participant=24023&from=1800&to=2030"
 curl -g "http://localhost:4000/timeline/density?from=1800&to=2020&bucket=10&source=wikidata_age"
+curl -g "http://localhost:4000/timeline/links?entity=24023"
 ```
+
+### One person, several sources
+
+Hank Aaron arrives from Lahman, IMDB and Wikidata as three entities.
+`make link` (also run automatically after every sync) fills `entity_links`:
+entities sharing a Wikidata QID link with certainty, and people whose name,
+birth year and death year match, and are unique in both sources, link at
+0.9 (0.7 when still alive). Wikidata is the canonical side because QIDs are
+the cross-source key. Events carry `certainty` (`exact`, `circa`, `unknown`)
+for sources that know their dates are approximate.
 
 ### SQLite features in use
 

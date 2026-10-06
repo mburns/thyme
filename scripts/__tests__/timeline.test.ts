@@ -1,5 +1,3 @@
-// The handler modules import the TrailBase host bindings, which only exist
-// inside the WASM runtime; the pure functions under test never touch them.
 // The package only ships ESM `import` exports, which Jest's CommonJS resolver
 // cannot see, hence the virtual mocks.
 jest.mock(
@@ -20,6 +18,7 @@ jest.mock(
 
 import {
   applyAnchor,
+  buildCountQuery,
   buildDensityQuery,
   buildEventsQuery,
   buildTrigramMatch,
@@ -38,6 +37,7 @@ const base: TimelineQuery = {
   kinds: [],
   span: null,
   match: null,
+  participant: null,
   limit: 100,
   offset: 0,
 };
@@ -75,13 +75,14 @@ describe("buildTrigramMatch", () => {
 });
 
 describe("buildEventsQuery", () => {
-  it("always applies the R*Tree overlap bounds and paging", () => {
+  it("always applies the R*Tree overlap bounds and paging, without a window count", () => {
     const { sql, params } = buildEventsQuery(base);
     expect(sql).toContain("FROM events_span");
     expect(sql).toContain("events_span.start_year <= ?");
     expect(sql).toContain("events_span.end_year >= ?");
-    expect(sql).toContain("count(*) OVER ()");
+    expect(sql).toContain("LEFT JOIN entity_links");
     expect(sql).toContain("row_number() OVER (PARTITION BY events.entity_id");
+    expect(sql).not.toContain("count(*) OVER ()");
     expect(params).toEqual([1980, 1950, 100, 0]);
   });
 
@@ -93,6 +94,7 @@ describe("buildEventsQuery", () => {
       kinds: ["release"],
       span: false,
       match: '"god"',
+      participant: 42,
       limit: 10,
       offset: 20,
     });
@@ -101,6 +103,9 @@ describe("buildEventsQuery", () => {
     expect(sql).toContain("events.kind IN (?)");
     expect(sql).toContain("events.span = ?");
     expect(sql).toContain("entities_fts MATCH ?");
+    expect(sql).toContain(
+      "SELECT event_id FROM event_participants WHERE entity_id = ?",
+    );
     expect(params).toEqual([
       1980,
       1950,
@@ -110,14 +115,29 @@ describe("buildEventsQuery", () => {
       "release",
       0,
       '"god"',
+      42,
+      42,
       10,
       20,
     ]);
   });
 });
 
+describe("buildCountQuery", () => {
+  it("shares the filter and stops counting at the cap", () => {
+    const { sql, params } = buildCountQuery(
+      { ...base, categories: ["film"] },
+      10000,
+    );
+    expect(sql).toContain("SELECT count(*) FROM (");
+    expect(sql).toContain("events.category IN (?)");
+    expect(sql).toContain("LIMIT ?)");
+    expect(params).toEqual([1980, 1950, "film", 10000]);
+  });
+});
+
 describe("buildDensityQuery", () => {
-  it("passes the bucket size three times for the negative-safe floor", () => {
+  it("reads the precomputed table and floors buckets safely for negatives", () => {
     const { sql, params } = buildDensityQuery(
       -500,
       100,
@@ -125,7 +145,9 @@ describe("buildDensityQuery", () => {
       ["philosopher"],
       [],
     );
-    expect(sql).toContain("(((events.start_year % ?) + ?) % ?)");
+    expect(sql).toContain("FROM event_density");
+    expect(sql).toContain("sum(event_density.count)");
+    expect(sql).toContain("(((event_density.year % ?) + ?) % ?)");
     expect(params).toEqual([50, 50, 50, -500, 100, "philosopher"]);
   });
 });
@@ -141,6 +163,7 @@ describe("applyAnchor", () => {
     startDate: String(startYear),
     endDate: null,
     precision: startJulian === null ? "year" : "day",
+    certainty: "exact",
     startYear,
     endYear: null,
     span: false,
@@ -155,6 +178,7 @@ describe("applyAnchor", () => {
       wikidataId: null,
       url: null,
       source: "imdb",
+      canonicalId: null,
     },
     seq: 1,
   });

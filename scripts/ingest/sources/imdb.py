@@ -42,7 +42,7 @@ SELECT nconst || ':life', 'person', nconst, 'life', primaryName,
        'year', birthYear, deathYear,
        COALESCE(NULLIF(substr(primaryProfession, 1,
                  instr(primaryProfession || ',', ',') - 1), ''), 'person'),
-       NULL, 1
+       NULL, 1, 'exact'
 FROM persons
 WHERE birthYear IS NOT NULL AND primaryName IS NOT NULL
 {limit}
@@ -69,7 +69,8 @@ SELECT t.tconst || ':' || k.kind, 'title', t.tconst, k.kind, t.primaryTitle,
        {CATEGORY_SQL},
        json_object('titleType', t.titleType, 'genres', t.genres,
                    'rating', r.averageRating, 'votes', r.numVotes),
-       CASE WHEN k.kind = 'run' THEN 1 ELSE 0 END
+       CASE WHEN k.kind = 'run' THEN 1 ELSE 0 END,
+       'exact'
 FROM titles t
 JOIN ratings r ON r.title_id = t.id
 JOIN (SELECT CASE WHEN t2.titleType IN ('tvSeries', 'tvMiniSeries')
@@ -77,6 +78,21 @@ JOIN (SELECT CASE WHEN t2.titleType IN ('tvSeries', 'tvMiniSeries')
       FROM titles t2) k ON k.id = t.id
 WHERE r.numVotes >= ? AND t.startYear IS NOT NULL AND t.primaryTitle IS NOT NULL
 {{limit}}
+"""
+
+# Cast and crew of every staged title become participants of its release or
+# run event. CROSS JOIN pins the join order: start from the (small) staged
+# titles and walk principals through its (title_id, ordering) index rather
+# than scanning all ~90M principals.
+TITLE_PARTICIPANTS = """
+INSERT OR IGNORE INTO stage_participants
+SELECT se.external_id, 'person', p.nconst, pr.category
+FROM stage_events se
+CROSS JOIN titles t ON t.tconst = se.entity_external_id
+CROSS JOIN principals pr ON pr.title_id = t.id
+CROSS JOIN persons p ON p.id = pr.person_id
+CROSS JOIN stage_entities sn ON sn.kind = 'person' AND sn.external_id = p.nconst
+WHERE se.entity_kind = 'title' AND pr.category IS NOT NULL
 """
 
 
@@ -88,7 +104,8 @@ class ImdbSource(Source):
     license = "IMDB non-commercial licence; attribution required"
     description = (
         "Titles with at least `imdb_min_votes` votes (release or series run) "
-        "and people with a known birth year (life span)."
+        "with their cast and crew as participants, and people with a known "
+        "birth year (life span)."
     )
     file_patterns = ("imdb/*.tsv.gz",)
 
@@ -115,6 +132,7 @@ class ImdbSource(Source):
         ctx.conn.execute(PERSON_EVENTS.format(limit=limit))
         ctx.conn.execute(TITLE_ENTITIES.format(limit=limit), (min_votes,))
         ctx.conn.execute(TITLE_EVENTS.format(limit=limit), (min_votes,))
+        ctx.conn.execute(TITLE_PARTICIPANTS)
 
     @staticmethod
     def _min_votes(ctx: SyncContext) -> int:

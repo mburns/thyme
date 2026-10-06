@@ -13,7 +13,15 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 
-from ingest.core import Entity, Event, Source, SyncContext, iso_date, read_csv
+from ingest.core import (
+    Entity,
+    Event,
+    Participant,
+    Source,
+    SyncContext,
+    iso_date,
+    read_csv,
+)
 
 CATEGORY = "baseball"
 BASE = "sports/baseball"
@@ -37,6 +45,9 @@ class LahmanSource(Source):
         "Fame) and franchises (active seasons, World Series wins), 1871 on."
     )
     file_patterns = (f"{BASE}/*.csv", f"{BASE}/readme*.txt")
+    # Players get a life span, a career span, awards, All-Star games and
+    # Hall of Fame; franchises get a run and a championship per World Series
+    # win, with that season's roster as participants.
 
     def version(self, ctx: SyncContext) -> str | None:
         for readme in ctx.data_dir.glob(f"{BASE}/readme*.txt"):
@@ -249,3 +260,23 @@ class LahmanSource(Source):
                 category=CATEGORY,
                 detail={"seasons": len(years)},
             )
+
+    def participants(self, ctx: SyncContext) -> Iterable[Participant]:
+        """Every player who appeared for a World Series winner that season."""
+        teams = self._path(ctx, "Teams.csv")
+        appearances = self._path(ctx, "Appearances.csv")
+        if not teams.exists() or not appearances.exists():
+            return
+        winners: dict[tuple[int, str], str] = {}
+        for t in read_csv(teams, ctx.limit):
+            if t["WSWin"] == "Y":
+                winners[(int(t["yearID"]), t["teamID"])] = t["franchID"]
+        for a in read_csv(appearances, ctx.limit):
+            franch = winners.get((int(a["yearID"]), a["teamID"]))
+            if franch is not None:
+                yield Participant(
+                    event_external_id=f"{franch}:championship:{a['yearID']}",
+                    entity_kind="person",
+                    entity_external_id=a["playerID"],
+                    role="player",
+                )
