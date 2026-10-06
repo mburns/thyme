@@ -167,7 +167,10 @@ function browseApp() {
                 if (d.categories.length) {
                     const url = `/timeline/overview?from=-3000&to=2030&bucket=100&per=3&category=${encodeURIComponent(d.categories.join(','))}`;
                     events = (await (await fetch(url)).json()).events || [];
-                } else if (d.kinds.length) {
+                }
+                // A domain whose categories are still stubs (Awards) is
+                // answered by its kinds instead.
+                if (events.length === 0 && d.kinds.length) {
                     const url = `/timeline?from=-3000&to=2030&limit=60&kind=${encodeURIComponent(d.kinds.join(','))}`;
                     events = (await (await fetch(url)).json()).events || [];
                     events.forEach(e => { e.bucket = Math.floor(e.startYear / 100) * 100; });
