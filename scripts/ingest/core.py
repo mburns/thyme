@@ -209,6 +209,8 @@ class Source(ABC):
 
 def read_csv(path: Path, limit: int | None = None) -> Iterator[dict[str, str]]:
     """Yield rows of a CSV as dicts, stopping after ``limit`` rows if given."""
+    # Store descriptions (Steam) run past the 128 KiB default field limit.
+    csv.field_size_limit(16 * 1024 * 1024)
     # utf-8-sig drops the byte-order mark some exports put before the header.
     with path.open(encoding="utf-8-sig", newline="") as f:
         for i, row in enumerate(csv.DictReader(f)):
@@ -479,9 +481,9 @@ LOD_OPEN_END = 2030
 # plus the same across all categories under category '*'. The bucket
 # expression floors correctly for negative years.
 INSERT_LOD = """
-INSERT INTO event_lod (bucket_size, bucket, category, source_id, pos, event_id)
-SELECT ?, bucket, category, source_id, pos, id FROM (
-  SELECT start_year - (((start_year % ?) + ?) % ?) AS bucket, category, source_id, id,
+INSERT INTO event_lod (bucket_size, bucket, category, source_id, pos, event_id, rank)
+SELECT ?, bucket, category, source_id, pos, id, rank FROM (
+  SELECT start_year - (((start_year % ?) + ?) % ?) AS bucket, category, source_id, id, rank,
          row_number() OVER (
            PARTITION BY start_year - (((start_year % ?) + ?) % ?), category
            ORDER BY rank DESC, id) AS pos
@@ -489,9 +491,9 @@ SELECT ?, bucket, category, source_id, pos, id FROM (
 WHERE pos <= ?
 """
 INSERT_LOD_ALL = """
-INSERT INTO event_lod (bucket_size, bucket, category, source_id, pos, event_id)
-SELECT ?, bucket, '*', source_id, pos, id FROM (
-  SELECT start_year - (((start_year % ?) + ?) % ?) AS bucket, source_id, id,
+INSERT INTO event_lod (bucket_size, bucket, category, source_id, pos, event_id, rank)
+SELECT ?, bucket, '*', source_id, pos, id, rank FROM (
+  SELECT start_year - (((start_year % ?) + ?) % ?) AS bucket, source_id, id, rank,
          row_number() OVER (
            PARTITION BY start_year - (((start_year % ?) + ?) % ?)
            ORDER BY rank DESC, id) AS pos
@@ -512,9 +514,9 @@ WITH RECURSIVE b(event_id, bucket, last, category, source_id, rank) AS (
   UNION ALL
   SELECT event_id, bucket + ?, last, category, source_id, rank FROM b WHERE bucket + ? <= last
 )
-INSERT INTO span_lod (bucket_size, bucket, category, source_id, pos, event_id)
-SELECT ?, bucket, category, source_id, pos, event_id FROM (
-  SELECT event_id, bucket, category, source_id,
+INSERT INTO span_lod (bucket_size, bucket, category, source_id, pos, event_id, rank)
+SELECT ?, bucket, category, source_id, pos, event_id, rank FROM (
+  SELECT event_id, bucket, category, source_id, rank,
          row_number() OVER (PARTITION BY bucket, category ORDER BY rank DESC, event_id) AS pos
   FROM b)
 WHERE pos <= ?
@@ -529,9 +531,9 @@ WITH RECURSIVE b(event_id, bucket, last, source_id, rank) AS (
   UNION ALL
   SELECT event_id, bucket + ?, last, source_id, rank FROM b WHERE bucket + ? <= last
 )
-INSERT INTO span_lod (bucket_size, bucket, category, source_id, pos, event_id)
-SELECT ?, bucket, '*', source_id, pos, event_id FROM (
-  SELECT event_id, bucket, source_id,
+INSERT INTO span_lod (bucket_size, bucket, category, source_id, pos, event_id, rank)
+SELECT ?, bucket, '*', source_id, pos, event_id, rank FROM (
+  SELECT event_id, bucket, source_id, rank,
          row_number() OVER (PARTITION BY bucket ORDER BY rank DESC, event_id) AS pos
   FROM b)
 WHERE pos <= ?
