@@ -1,0 +1,363 @@
+{% extends "_base.html" %}
+
+{% block title %}Search - Thyme IMDB{% endblock %}
+
+{% block content %}
+<div class="search-container" x-data="searchApp()">
+    <h2>Search IMDB Data</h2>
+
+    <div class="search-form">
+        <form @submit.prevent="performSearch">
+            <div class="search-input-group">
+                <input
+                    type="text"
+                    x-model="query"
+                    placeholder="Search for movies, TV shows, people, genres, years..."
+                    class="search-input"
+                    @input="debounceSearch"
+                >
+                <button type="submit" class="search-button">Search</button>
+            </div>
+
+            <div class="search-filters">
+                <label>
+                    <input type="checkbox" x-model="filters.titles" @change="performSearch">
+                    Titles
+                </label>
+                <label>
+                    <input type="checkbox" x-model="filters.persons" @change="performSearch">
+                    People
+                </label>
+                <label>
+                    <input type="checkbox" x-model="filters.years" @change="performSearch">
+                    Years
+                </label>
+            </div>
+        </form>
+    </div>
+
+    <div class="search-results" x-show="results.length > 0">
+        <h3>Search Results (<span x-text="results.length"></span>)</h3>
+
+        <div class="results-container">
+            <template x-for="result in results" :key="result.id + result.type">
+                <div class="result-item" :class="'result-' + result.type">
+                    <div class="result-header">
+                        <h4>
+                            <a :href="getResultUrl(result)" x-text="result.primaryTitle || result.primaryName"></a>
+                        </h4>
+                        <span class="result-type" x-text="result.type === 'title' ? 'Title' : 'Person'"></span>
+                    </div>
+
+                    <div class="result-details">
+                        <template x-if="result.type === 'title'">
+                            <div class="title-details">
+                                <span x-show="result.titleType" x-text="result.titleType"></span>
+                                <span x-show="result.startYear" x-text="'(' + result.startYear + ')'"></span>
+                                <span x-show="result.endYear && result.endYear !== result.startYear" x-text="'-' + result.endYear"></span>
+                                <span x-show="result.genres" x-text="result.genres"></span>
+                                <span x-show="result.averageRating" x-text="'★ ' + result.averageRating"></span>
+                            </div>
+                        </template>
+
+                        <template x-if="result.type === 'person'">
+                            <div class="person-details">
+                                <span x-show="result.birthYear" x-text="result.birthYear + '-'"></span>
+                                <span x-show="result.deathYear" x-text="result.deathYear"></span>
+                                <span x-show="!result.deathYear && result.birthYear" x-text="'present'"></span>
+                                <span x-show="result.primaryProfession" x-text="result.primaryProfession"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <div class="search-pagination" x-show="totalPages > 1">
+            <button @click="prevPage" :disabled="currentPage <= 1">Previous</button>
+            <span x-text="'Page ' + currentPage + ' of ' + totalPages"></span>
+            <button @click="nextPage" :disabled="currentPage >= totalPages">Next</button>
+        </div>
+    </div>
+
+    <div class="no-results" x-show="searched && results.length === 0">
+        <p>No results found for "<span x-text="query"></span>"</p>
+        <p>Try different keywords or check your spelling.</p>
+    </div>
+
+    <div class="search-tips" x-show="!searched">
+        <h3>Search Tips</h3>
+        <ul>
+            <li>Search for movie titles, actor names, directors, or genres</li>
+            <li>Use quotes for exact phrases: "The Godfather"</li>
+            <li>Search by year: 1999, 2020s, etc.</li>
+            <li>Combine terms: "action 2023" or "Tom Hanks drama"</li>
+            <li>Use filters to narrow down results</li>
+        </ul>
+    </div>
+</div>
+
+<style>
+.search-container {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 20px;
+    color: #333; /* Darker text for better contrast */
+}
+
+.search-form {
+    margin-bottom: 30px;
+}
+
+.search-input-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.search-input {
+    flex: 1;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 16px;
+    color: #333; /* Darker text in input */
+}
+
+.search-button {
+    padding: 12px 24px;
+    background: #007bff;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.search-button:hover {
+    background: #0056b3;
+}
+
+.search-filters {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.search-filters label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    color: #333; /* Darker text for labels */
+}
+
+.results-container {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.result-item {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.result-title {
+    border-left: 4px solid #007bff;
+}
+
+.result-person {
+    border-left: 4px solid #28a745;
+}
+
+.result-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.result-header h4 {
+    margin: 0;
+    flex: 1;
+    color: #333; /* Darker text for headers */
+}
+
+.result-header h4 a {
+    color: #007bff;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.result-header h4 a:hover {
+    text-decoration: underline;
+    color: #0056b3;
+}
+
+.result-type {
+    background: #e9ecef;
+    color: #495057; /* Darker text for type badges */
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.result-details {
+    color: #495057; /* Much darker text for better readability */
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.result-details span {
+    margin-right: 10px;
+    display: inline-block;
+}
+
+.search-pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 20px;
+    padding: 15px;
+}
+
+.search-pagination button {
+    padding: 8px 16px;
+    background: #f8f9fa;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #333; /* Darker text for buttons */
+}
+
+.search-pagination button:hover:not(:disabled) {
+    background: #e9ecef;
+}
+
+.search-pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.search-pagination span {
+    color: #333; /* Darker text for pagination info */
+}
+
+.no-results {
+    text-align: center;
+    padding: 40px;
+    color: #495057; /* Darker text for no results */
+}
+
+.search-tips {
+    background: #f8f9fa;
+    padding: 20px;
+    border-radius: 8px;
+    margin-top: 30px;
+    border: 1px solid #e9ecef;
+}
+
+.search-tips h3 {
+    margin-top: 0;
+    color: #333; /* Darker text for tips header */
+}
+
+.search-tips ul {
+    margin: 0;
+    padding-left: 20px;
+    color: #495057; /* Darker text for tips list */
+}
+
+.search-tips li {
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function searchApp() {
+    return {
+        query: '',
+        results: [],
+        searched: false,
+        loading: false,
+        currentPage: 1,
+        totalPages: 1,
+        filters: {
+            titles: true,
+            persons: true,
+            years: true
+        },
+        debounceTimer: null,
+
+        debounceSearch() {
+            clearTimeout(this.debounceTimer);
+            this.debounceTimer = setTimeout(() => {
+                if (this.query.length >= 2) {
+                    this.performSearch();
+                }
+            }, 300);
+        },
+
+        async performSearch() {
+            if (!this.query.trim()) {
+                this.results = [];
+                this.searched = false;
+                return;
+            }
+
+            this.loading = true;
+            this.searched = true;
+
+            try {
+                const response = await fetch(`/search?q=${encodeURIComponent(this.query)}&page=${this.currentPage}&titles=${this.filters.titles}&persons=${this.filters.persons}&years=${this.filters.years}`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    this.results = data.results || [];
+                    this.totalPages = data.totalPages || 1;
+                } else {
+                    console.error('Search failed:', response.status);
+                    this.results = [];
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+                this.results = [];
+            }
+
+            this.loading = false;
+        },
+
+        getResultUrl(result) {
+            if (result.type === 'title') {
+                return `/title.html#${result.id}`;
+            } else {
+                return `/person.html#${result.id}`;
+            }
+        },
+
+        prevPage() {
+            if (this.currentPage > 1) {
+                this.currentPage--;
+                this.performSearch();
+            }
+        },
+
+        nextPage() {
+            if (this.currentPage < this.totalPages) {
+                this.currentPage++;
+                this.performSearch();
+            }
+        }
+    }
+}
+</script>
+{% endblock %}

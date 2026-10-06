@@ -1,0 +1,36 @@
+# MusicBrainz official releases (CC0), one row per release with the first
+# credited artist and the earliest release date. Each release is an instant
+# on the artist's lane; artist MBIDs are the exact link to Wikidata (P434).
+# The dump contains stray years (206, 3036); min/max_year drops them.
+slug = "musicbrainz"
+name = "MusicBrainz official releases"
+homepage = "https://musicbrainz.org/"
+license = "CC0"
+description = "Every official release in MusicBrainz, dated, on its first credited artist's lane."
+files = ["music/official_releases.csv"]
+category = "music"
+min_year = 1877
+max_year = 2030
+
+# "Various Artists" is MusicBrainz's placeholder for compilations: a quarter
+# of a million releases on one lane, which drowned the music overview.
+[[entities]]
+file = "music/official_releases.csv"
+kind = "artist"
+id = "{artist_mbid}"
+name = "{artist_name}"
+description = "Musical artist"
+url = "https://musicbrainz.org/artist/{artist_mbid}"
+identifiers = { musicbrainz = "{artist_mbid}" }
+unless = { artist_mbid = "89ad4ac3-39f7-470e-963a-56509c546377" }
+
+[[events]]
+file = "music/official_releases.csv"
+id = "{release_mbid}"
+entity = "artist:{artist_mbid}"
+kind = "release"
+label = "{release_title}"
+start = { year = "{date_year}", month = "{date_month}", day = "{date_day}" }
+require = ["date_year"]
+unless = { artist_mbid = "89ad4ac3-39f7-470e-963a-56509c546377" }
+detail = { type = "{release_group_type}", country = "{country_code}", mbid = "{release_mbid}" }

@@ -1,0 +1,49 @@
+{% extends "_base.html" %}
+
+{% block content %}
+<h1>Top 100 Rated Titles</h1>
+<p>Showing the highest-rated titles with a minimum of 10,000 votes, sorted by rating and then popularity.</p>
+
+<div x-data="{
+    records: [],
+    isLoading: true,
+    fetchData() {
+        this.isLoading = true;
+        const url = '/api/records/v1/v_title_details?filter[numVotes][$gte]=10000&order=-averageRating,-numVotes';
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                this.records = data.records;
+                this.isLoading = false;
+            })
+    }
+}" x-init="fetchData()">
+
+    <p x-show="isLoading">Loading top rated titles...</p>
+
+    <template x-if="!isLoading">
+        <table>
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Year</th>
+                    <th>Rating</th>
+                    <th>Votes</th>
+                    <th>Genres</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="r in records" :key="r.id">
+                    <tr>
+                        <td><a :href="'/title.html#' + r.id" x-text="r.primaryTitle"></a></td>
+                        <td x-text="r.startYear || ''"></td>
+                        <td x-text="r.averageRating ? r.averageRating.toFixed(1) : ''"></td>
+                        <td x-text="r.numVotes ? r.numVotes.toLocaleString() : ''"></td>
+                        <td x-html="r.genres ? r.genres.split(',').map(g => `<a href='/genres.html?genre=${g.trim()}'>${g.trim()}</a>`).join(', ') : ''"></td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </template>
+</div>
+{% endblock %}

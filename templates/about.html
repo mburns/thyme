@@ -1,0 +1,29 @@
+{% extends "_base.html" %}
+
+{% block title %}About | Thyme IMDB{% endblock %}
+
+{% block content %}
+<h1>About Thyme IMDB</h1>
+<div style="max-width: 80ch;">
+    <p>
+        This website is a demonstration project designed to showcase a modern, efficient web development stack.
+        It's an IMDB clone built on several key technologies working in concert:
+    </p>
+    <ul>
+        <li>
+            <strong>TrailBase:</strong> At its core, TrailBase serves as the all-in-one backend. It provides a
+            fast, self-contained database server with a built-in REST API and a static file server. All data
+            is stored locally in a `traildepot` directory, making the entire application portable and easy to manage.
+        </li>
+        <li>
+            <strong>Jinja2 &amp; Static Site Generation:</strong> The HTML pages are built from Jinja2 templates. A Python
+            script (`build.py`) renders these templates into a static "shell" of a site. This means the initial
+            page load is extremely fast, delivering a complete HTML structure that Alpine.js then hydrates with
+            dynamic data from the backend.
+        </li>
+    </ul>
+    <p>
+        The data is a subset of the public IMDB dataset, imported directly into the TrailBase SQLite database using a custom Python script (`import_imdb_direct.py`).
+    </p>
+</div>
+{% endblock %} 

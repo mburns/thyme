@@ -30,3 +30,24 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+.DS_Store
+
+trail
+traildepot/secrets
+traildepot/data
+traildepot/uploads
+traildepot/wasm
+traildepot/GeoLite2-Country.mmdb
+wasm/dist
+traildepot/trailbase.d.ts
+traildepot/trailbase.js
+
+venv
+data
+dist
+
+temp_import/
+__pycache__/
+
+node_modules/

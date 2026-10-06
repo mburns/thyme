@@ -1,0 +1,114 @@
+# NBA Basketball Database (Kaggle, wyattowalsh/basketball), CSV export.
+# Players get a life span, a career span and a draft instant; every game is
+# an instant on the home team's lane with the away team as participant;
+# franchise eras (city and nickname) are spans. NBA.com player ids are the
+# exact link to Wikidata (P3647).
+slug = "nba"
+name = "NBA Basketball Database"
+homepage = "https://www.kaggle.com/datasets/wyattowalsh/basketball"
+license = "CC BY-SA 4.0"
+description = "NBA players (life, career, draft), every game since 1946 and franchise eras."
+files = [
+  "sports/nba/csv/common_player_info.csv",
+  "sports/nba/csv/draft_history.csv",
+  "sports/nba/csv/game.csv",
+  "sports/nba/csv/team_history.csv",
+]
+category = "basketball"
+min_year = 1890
+max_year = 2030
+
+# Drafted players who never appeared in a game are only in draft_history.
+# Later blocks win when ids repeat, so the richer player record comes second.
+[[entities]]
+file = "sports/nba/csv/draft_history.csv"
+kind = "person"
+id = "{person_id}"
+name = "{player_name}"
+description = "NBA draft pick"
+url = "https://www.nba.com/player/{person_id}"
+identifiers = { nba = "{person_id}" }
+when = { draft_type = "Draft" }
+
+[[entities]]
+file = "sports/nba/csv/common_player_info.csv"
+kind = "person"
+id = "{person_id}"
+name = "{display_first_last}"
+description = "NBA {position}"
+url = "https://www.nba.com/player/{person_id}"
+identifiers = { nba = "{person_id}" }
+
+# Teams come from the games themselves, which cover defunct franchises that
+# team.csv (current teams only) does not.
+[[entities]]
+file = "sports/nba/csv/game.csv"
+kind = "team"
+id = "{team_id_home}"
+name = "{team_name_home}"
+description = "NBA team"
+
+[[entities]]
+file = "sports/nba/csv/game.csv"
+kind = "team"
+id = "{team_id_away}"
+name = "{team_name_away}"
+description = "NBA team"
+
+[[events]]
+file = "sports/nba/csv/common_player_info.csv"
+id = "{person_id}:life"
+entity = "person:{person_id}"
+kind = "life"
+label = "{display_first_last}"
+start = "{birthdate}"
+span = true
+require = ["birthdate"]
+detail = { position = "{position}", school = "{school}", country = "{country}" }
+
+[[events]]
+file = "sports/nba/csv/common_player_info.csv"
+id = "{person_id}:career"
+entity = "person:{person_id}"
+kind = "career"
+label = "{display_first_last}'s NBA career"
+start = "{from_year}"
+end = "{to_year}"
+span = true
+require = ["from_year"]
+detail = { seasons = "{season_exp|int}", last_team = "{team_name}" }
+
+[[events]]
+file = "sports/nba/csv/draft_history.csv"
+id = "{person_id}:draft:{season}"
+entity = "person:{person_id}"
+kind = "draft"
+label = "Drafted #{overall_pick} by the {team_city} {team_name}"
+start = "{season}"
+when = { draft_type = "Draft" }
+detail = { round = "{round_number}", pick = "{overall_pick}", team = "{team_city} {team_name}", from = "{organization}" }
+
+[[events]]
+file = "sports/nba/csv/game.csv"
+id = "game:{game_id}"
+entity = "team:{team_id_home}"
+kind = "game"
+label = "{team_name_home} {pts_home|int} – {team_name_away} {pts_away|int}"
+start = "{game_date}"
+detail = { season = "{season_id}", type = "{season_type}", home = "{team_name_home}", away = "{team_name_away}", home_points = "{pts_home|int}", away_points = "{pts_away|int}", home_result = "{wl_home}" }
+
+[[participants]]
+file = "sports/nba/csv/game.csv"
+event = "game:{game_id}"
+entity = "team:{team_id_away}"
+role = "away"
+
+[[events]]
+file = "sports/nba/csv/team_history.csv"
+id = "team:{team_id}:era:{year_founded}"
+entity = "team:{team_id}"
+kind = "run"
+label = "{city} {nickname}"
+start = "{year_founded}"
+end = "{year_active_till}"
+span = true

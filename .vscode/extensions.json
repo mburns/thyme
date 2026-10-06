@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "biomejs.biome",
+    "charliermarsh.ruff",
+    "ms-python.python",
+    "ms-vscode.vscode-jest",
+    "eamodio.gitlens"
+  ]
+}

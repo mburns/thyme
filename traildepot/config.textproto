@@ -1,0 +1,106 @@
+# TrailBase configuration.
+#
+# Everything exposed here is public, read-only reference data, so every API
+# grants READ to the world and nothing more. Writes happen through the import
+# and ingest scripts, not the API. Views need a column that traces back to an
+# INTEGER primary key to be listed here.
+server {
+  application_name: "Thyme"
+  logs_retention_sec: 604800
+}
+auth {
+  auth_token_ttl_sec: 3600
+  refresh_token_ttl_sec: 2592000
+}
+jobs {}
+record_apis: [{
+  name: "titles"
+  table_name: "titles"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "persons"
+  table_name: "persons"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "ratings"
+  table_name: "ratings"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+  expand: ["title_id"]
+}, {
+  name: "principals"
+  table_name: "principals"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+  expand: ["title_id", "person_id"]
+}, {
+  name: "episodes"
+  table_name: "episodes"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+  expand: ["parent_title_id", "title_id"]
+}, {
+  name: "crew"
+  table_name: "crew"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+  expand: ["person_id", "title_id"]
+}, {
+  name: "genres"
+  table_name: "genres"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "v_simple_titles"
+  table_name: "v_simple_titles"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "v_title_details"
+  table_name: "v_title_details"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "v_title_principals"
+  table_name: "v_title_principals"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "v_title_episodes"
+  table_name: "v_title_episodes"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "v_person_titles"
+  table_name: "v_person_titles"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "v_genre_titles"
+  table_name: "v_genre_titles"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "sources"
+  table_name: "sources"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "entities"
+  table_name: "entities"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}, {
+  name: "events"
+  table_name: "events"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+  expand: ["entity_id", "source_id"]
+}, {
+  name: "v_events"
+  table_name: "v_events"
+  acl_world: [READ]
+  acl_authenticated: [READ]
+}]

@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main, poc-3]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typescript:
+    name: TypeScript (lint, types, tests, site, WASM component)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # jco's native dependencies need Node 22.20+.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn lint
+      - run: yarn type-check
+      - run: yarn test
+      - run: yarn build:site
+      - run: yarn wasm:build
+      - name: Component is in place
+        run: test -s traildepot/wasm/component.wasm
+
+  python:
+    name: Python (ruff, ingest tests, migrations)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: ruff check scripts/ingest scripts/ingest_events.py scripts/wikidata_extract.py scripts/test_ingest_events.py scripts/test_search.py
+      - run: ruff format --check scripts/ingest scripts/ingest_events.py scripts/wikidata_extract.py scripts/test_ingest_events.py scripts/test_search.py
+      - name: Migrations apply with the system sqlite3 CLI
+        run: |
+          sudo apt-get update && sudo apt-get install -y sqlite3
+          for m in traildepot/migrations/U*.sql; do sqlite3 ci.db < "$m"; done
+          sqlite3 ci.db "SELECT count(*) FROM sqlite_master WHERE name IN ('events', 'events_span', 'entities_fts', 'genres')" | grep -q '^4$'
+      - run: python3 scripts/test_ingest_events.py

@@ -1,0 +1,13 @@
+# Conventional commit message check (husky v9: no shim sourcing needed).
+commit_msg=$(cat "$1")
+
+if ! echo "$commit_msg" | grep -qE "^(feat|fix|perf|docs|style|refactor|test|chore|ci|build|revert)(\(.+\))?!?: .+"; then
+  echo "❌ Commit message should follow conventional format: type(scope): description"
+  echo "   Examples:"
+  echo "   - feat: add new search functionality"
+  echo "   - fix(auth): resolve login issue"
+  echo "   - docs: update README"
+  exit 1
+fi
+
+echo "✅ Commit message format is valid" 
