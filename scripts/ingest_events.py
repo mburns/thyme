@@ -39,6 +39,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     sub.add_parser("list", help="show every source and its last sync")
     sub.add_parser("check", help="exit 1 if any source has changed files")
     sub.add_parser("link", help="resolve the same person across sources (entity_links)")
+    sub.add_parser("rerank", help="recompute event rank and the level-of-detail table")
 
     sync = sub.add_parser("sync", help="import sources whose files changed")
     sync.add_argument("slugs", nargs="*", help="sources to sync (default: all)")
@@ -144,6 +145,9 @@ def main(argv: list[str] | None = None) -> int:
             return cmd_check(syncer)
         if args.command == "link":
             return cmd_link(syncer)
+        if args.command == "rerank":
+            print(f"{'rerank':<14}{'ok':<10}{syncer.rerank()} sources")
+            return 0
         return cmd_sync(syncer, args)
     finally:
         conn.close()

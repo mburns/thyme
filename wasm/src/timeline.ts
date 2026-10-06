@@ -6,9 +6,9 @@ import {
 } from "trailbase-wasm/http";
 import { num, type Params, str } from "./values";
 
-/// Timeline API over the unified `events` table.
+/// Timeline API over the unified `events` table, built to be scanned.
 ///
-/// GET /timeline            events overlapping a year range
+/// GET /timeline            one page of a window, in start order
 ///   from, to      year bounds (default 1900..current year); negative = BCE
 ///   category      comma-separated categories ("film,baseball")
 ///   source        comma-separated source slugs ("imdb,lahman")
@@ -18,23 +18,21 @@ import { num, type Params, str } from "./values";
 ///   participant   entity id; only events that entity owns or took part in
 ///   anchor        entity id; every event gets its offset from that entity's
 ///                 first span (years, and days when both are day-precision)
-///   limit/offset  paging (limit max MAX_LIMIT). `total` is counted with a
-///                 separate capped query, so `totalCapped` means "at least".
-///   Point-in-time ("who was alive in 1972") is from=1972&to=1972&span=1.
+///   cursor        keyset cursor from the previous page's `next`
+///   limit         page size (max MAX_LIMIT)
+///   Returns `active` (spans that began before `from` and are still open
+///   there; first page only), `events` (those starting inside the window,
+///   ordered by start then id, walking an index and stopping at `limit`),
+///   `next` (cursor, or null) and a capped `total`.
 ///
-/// GET /timeline/density        counts per year bucket and category, served
-///                              from the precomputed `event_density` table
-///   from, to, category, source as above; bucket = years per bucket (1..1000)
+/// GET /timeline/overview   what matters in a window when it is too wide
+///   from, to, category, source as above; bucket = 1, 10 or 100 years;
+///   per = events per bucket and category (max 20). Served from the
+///   precomputed `event_lod` table, so cost does not grow with the data.
 ///
-/// GET /timeline/participants   who took part in an event
-///   event         event id
-///
-/// GET /timeline/links          the same real-world entity across sources
-///   entity        entity id; returns the canonical entity and every
-///                 entity linked to it
-///
-/// Uses the R*Tree `events_span` for the overlap test, window functions for
-/// per-entity ordering, and the generated Julian-day columns for day offsets.
+/// GET /timeline/density        counts per year bucket from `event_density`
+/// GET /timeline/participants   who took part in an event (`event=<id>`)
+/// GET /timeline/links          the same entity across sources (`entity=<id>`)
 
 const DEFAULT_LIMIT = 500;
 const MAX_LIMIT = 5000;
@@ -42,6 +40,13 @@ const COUNT_CAP = 10_000;
 const MAX_LIST = 50;
 const MIN_YEAR = -100000;
 const MAX_YEAR = 9999;
+const LOD_SIZES = [1, 10, 100];
+const LOD_MAX_PER = 20;
+
+export interface Cursor {
+  startYear: number;
+  id: number;
+}
 
 export interface TimelineQuery {
   from: number;
@@ -52,8 +57,8 @@ export interface TimelineQuery {
   span: boolean | null;
   match: string | null;
   participant: number | null;
+  cursor: Cursor | null;
   limit: number;
-  offset: number;
 }
 
 export interface TimelineEvent {
@@ -68,6 +73,7 @@ export interface TimelineEvent {
   endYear: number | null;
   span: boolean;
   category: string;
+  rank: number;
   detail: Record<string, unknown> | null;
   startJulian: number | null;
   endJulian: number | null;
@@ -82,8 +88,6 @@ export interface TimelineEvent {
     /// real-world entity; null when it is canonical itself.
     canonicalId: number | null;
   };
-  /// 1-based position of this event among the entity's events.
-  seq: number;
   offsetYears?: number;
   offsetDays?: number;
 }
@@ -140,6 +144,22 @@ function parseId(value: string | null): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+/// Cursors are "startYear:id" of the last event of the previous page.
+export function parseCursor(value: string | null): Cursor | null {
+  if (!value) {
+    return null;
+  }
+  const m = /^(-?\d+):(\d+)$/.exec(value.trim());
+  if (!m) {
+    return null;
+  }
+  return { startYear: Number(m[1]), id: Number(m[2]) };
+}
+
+export function formatCursor(e: { startYear: number; id: number }): string {
+  return `${e.startYear}:${e.id}`;
+}
+
 /// Build a MATCH expression for the trigram-tokenized `entities_fts`.
 /// Each term is quoted so FTS5 syntax in user input is inert; terms shorter
 /// than three characters cannot match a trigram index and are dropped.
@@ -156,14 +176,13 @@ function placeholders(n: number): string {
   return Array.from({ length: n }, () => "?").join(", ");
 }
 
-/// The WHERE clause shared by the page and the count queries.
-function buildWhere(q: TimelineQuery): { where: string; params: unknown[] } {
-  const where: string[] = [
-    "events_span.start_year <= ?",
-    "events_span.end_year >= ?",
-  ];
-  const params: unknown[] = [q.to, q.from];
-
+/// Filter clauses shared by every events query (no time bounds).
+function buildFilters(q: TimelineQuery): {
+  where: string[];
+  params: unknown[];
+} {
+  const where: string[] = [];
+  const params: unknown[] = [];
   if (q.categories.length > 0) {
     where.push(`events.category IN (${placeholders(q.categories.length)})`);
     params.push(...q.categories);
@@ -193,52 +212,116 @@ function buildWhere(q: TimelineQuery): { where: string; params: unknown[] } {
     );
     params.push(q.participant, q.participant);
   }
-  return { where: where.join("\n       AND "), params };
+  return { where, params };
 }
 
-/// Compose the events page query. Exported so the SQL shape can be
-/// unit-tested without a database.
-export function buildEventsQuery(q: TimelineQuery): {
-  sql: string;
-  params: unknown[];
-} {
-  const { where, params } = buildWhere(q);
-  const sql = `
-    SELECT events.id, events.kind, events.label, events.start_date, events.end_date,
+const EVENT_COLUMNS = `
+           events.id, events.kind, events.label, events.start_date, events.end_date,
            events.precision, events.start_year, events.end_year, events.span,
            events.category, events.detail, events.start_julian, events.end_julian,
            entities.id, entities.kind, entities.name, entities.wikidata_id,
            entities.url, sources.slug, entity_links.canonical_id, events.certainty,
-           row_number() OVER (PARTITION BY events.entity_id
-                              ORDER BY events.start_year, events.id) AS seq
-      FROM events_span
-      JOIN events ON events.id = events_span.id
+           events.rank`;
+
+const EVENT_JOINS = `
       JOIN entities ON entities.id = events.entity_id
       JOIN sources ON sources.id = events.source_id
-      LEFT JOIN entity_links ON entity_links.entity_id = entities.id
-     WHERE ${where}
+      LEFT JOIN entity_links ON entity_links.entity_id = entities.id`;
+
+/// Events that START inside the window, in (start_year, id) order. With a
+/// category filter this walks events_by_category; without, events_by_start.
+/// Either way SQLite stops after `limit + 1` rows; the extra row tells us
+/// whether there is a next page.
+export function buildWindowQuery(q: TimelineQuery): {
+  sql: string;
+  params: unknown[];
+} {
+  const { where, params } = buildFilters(q);
+  const bounds = ["events.start_year BETWEEN ? AND ?"];
+  const boundParams: unknown[] = [q.from, q.to];
+  if (q.cursor !== null) {
+    bounds.push("(events.start_year, events.id) > (?, ?)");
+    boundParams.push(q.cursor.startYear, q.cursor.id);
+  }
+  const sql = `
+    SELECT ${EVENT_COLUMNS}
+      FROM events${EVENT_JOINS}
+     WHERE ${[...bounds, ...where].join("\n       AND ")}
      ORDER BY events.start_year, events.id
-     LIMIT ? OFFSET ?`;
-  return { sql, params: [...params, q.limit, q.offset] };
+     LIMIT ?`;
+  return { sql, params: [...boundParams, ...params, q.limit + 1] };
 }
 
-/// Count matches, but stop counting at `cap` so an unfiltered wide window
-/// over millions of events stays cheap. A result equal to `cap` means
-/// "at least cap".
+/// Spans that began before the window and are still open at `from`: the
+/// lives, careers and runs that frame what starts inside it. R*Tree point
+/// query, bounded by `limit`.
+export function buildActiveQuery(q: TimelineQuery): {
+  sql: string;
+  params: unknown[];
+} {
+  const { where, params } = buildFilters(q);
+  const bounds = [
+    "events_span.start_year < ?",
+    "events_span.end_year >= ?",
+    "events.span = 1",
+  ];
+  const sql = `
+    SELECT ${EVENT_COLUMNS}
+      FROM events_span
+      JOIN events ON events.id = events_span.id${EVENT_JOINS}
+     WHERE ${[...bounds, ...where].join("\n       AND ")}
+     ORDER BY events.start_year, events.id
+     LIMIT ?`;
+  return { sql, params: [q.from, q.from, ...params, q.limit] };
+}
+
+/// Count events starting inside the window, stopping at `cap`.
 export function buildCountQuery(
   q: TimelineQuery,
   cap: number = COUNT_CAP,
 ): { sql: string; params: unknown[] } {
-  const { where, params } = buildWhere(q);
+  const { where, params } = buildFilters(q);
   const sql = `
     SELECT count(*) FROM (
       SELECT 1
-        FROM events_span
-        JOIN events ON events.id = events_span.id
+        FROM events
         JOIN sources ON sources.id = events.source_id
-       WHERE ${where}
+       WHERE ${["events.start_year BETWEEN ? AND ?", ...where].join("\n       AND ")}
        LIMIT ?)`;
-  return { sql, params: [...params, cap] };
+  return { sql, params: [q.from, q.to, ...params, cap] };
+}
+
+/// Top events per bucket and category from the precomputed LOD table.
+export function buildOverviewQuery(
+  from: number,
+  to: number,
+  bucket: number,
+  per: number,
+  categories: string[],
+  sources: string[],
+): { sql: string; params: unknown[] } {
+  const where = [
+    "event_lod.bucket_size = ?",
+    "event_lod.bucket BETWEEN ? AND ?",
+    "event_lod.pos <= ?",
+  ];
+  const floorFrom = from - ((((from % bucket) + bucket) % bucket) % bucket);
+  const params: unknown[] = [bucket, floorFrom, to, per];
+  if (categories.length > 0) {
+    where.push(`event_lod.category IN (${placeholders(categories.length)})`);
+    params.push(...categories);
+  }
+  if (sources.length > 0) {
+    where.push(`sources.slug IN (${placeholders(sources.length)})`);
+    params.push(...sources);
+  }
+  const sql = `
+    SELECT ${EVENT_COLUMNS}, event_lod.bucket
+      FROM event_lod
+      JOIN events ON events.id = event_lod.event_id${EVENT_JOINS}
+     WHERE ${where.join("\n       AND ")}
+     ORDER BY event_lod.bucket, events.rank DESC, events.id`;
+  return { sql, params };
 }
 
 /// Year buckets that floor correctly for negative years without math
@@ -314,7 +397,7 @@ function rowToEvent(row: unknown[]): TimelineEvent {
       canonicalId: num(row[19]),
     },
     certainty: str(row[20]) ?? "exact",
-    seq: num(row[21]) ?? 1,
+    rank: num(row[21]) ?? 0,
   };
 }
 
@@ -358,10 +441,10 @@ function yearRange(req: HttpRequest): { from: number; to: number } {
   return { from, to };
 }
 
-export async function timeline(req: HttpRequest): Promise<object> {
+function readQuery(req: HttpRequest): TimelineQuery {
   const { from, to } = yearRange(req);
   const spanParam = req.getQueryParam("span");
-  const q: TimelineQuery = {
+  return {
     from,
     to,
     categories: parseList(req.getQueryParam("category")),
@@ -370,49 +453,102 @@ export async function timeline(req: HttpRequest): Promise<object> {
     span: spanParam === "1" ? true : spanParam === "0" ? false : null,
     match: buildTrigramMatch(req.getQueryParam("q") ?? ""),
     participant: parseId(req.getQueryParam("participant")),
+    cursor: parseCursor(req.getQueryParam("cursor")),
     limit: parseBounded(
       req.getQueryParam("limit"),
       DEFAULT_LIMIT,
       1,
       MAX_LIMIT,
     ),
-    offset: parseBounded(
-      req.getQueryParam("offset"),
-      0,
-      0,
-      Number.MAX_SAFE_INTEGER,
-    ),
   };
+}
 
+export async function timeline(req: HttpRequest): Promise<object> {
+  const q = readQuery(req);
   try {
-    const page = buildEventsQuery(q);
+    const page = buildWindowQuery(q);
     const count = buildCountQuery(q);
-    const [rows, countRows] = await Promise.all([
+    const active = buildActiveQuery(q);
+    const [rows, countRows, activeRows] = await Promise.all([
       query(page.sql, page.params as Params),
-      query(count.sql, count.params as Params),
+      q.cursor === null
+        ? query(count.sql, count.params as Params)
+        : Promise.resolve([] as unknown[][]),
+      q.cursor === null
+        ? query(active.sql, active.params as Params)
+        : Promise.resolve([] as unknown[][]),
     ]);
-    const events = rows.map(rowToEvent);
-    const total = num(countRows[0]?.[0]) ?? 0;
+    const hasMore = rows.length > q.limit;
+    const events = rows.slice(0, q.limit).map(rowToEvent);
+    const activeEvents = activeRows.map(rowToEvent);
+    const last = events[events.length - 1];
+    const total = num(countRows[0]?.[0]);
 
     const anchorId = parseId(req.getQueryParam("anchor"));
     const anchor = anchorId !== null ? await loadAnchor(anchorId) : null;
     if (anchor !== null) {
       applyAnchor(events, anchor);
+      applyAnchor(activeEvents, anchor);
     }
 
     return {
-      from,
-      to,
-      total,
-      totalCapped: total >= COUNT_CAP,
+      from: q.from,
+      to: q.to,
       limit: q.limit,
-      offset: q.offset,
+      total,
+      totalCapped: total !== null && total >= COUNT_CAP,
+      next: hasMore && last ? formatCursor(last) : null,
       anchor,
+      active: activeEvents,
       events,
     };
   } catch (error) {
     console.error("[TIMELINE] query failed:", error);
-    return { from, to, total: 0, events: [], error: "Timeline query failed" };
+    return {
+      from: q.from,
+      to: q.to,
+      active: [],
+      events: [],
+      next: null,
+      error: "Timeline query failed",
+    };
+  }
+}
+
+export async function overview(req: HttpRequest): Promise<object> {
+  const { from, to } = yearRange(req);
+  const requested = parseBounded(req.getQueryParam("bucket"), 10, 1, 100);
+  const bucket = LOD_SIZES.includes(requested)
+    ? requested
+    : (LOD_SIZES.filter((s) => s <= requested).pop() ?? 1);
+  const per = parseBounded(req.getQueryParam("per"), 5, 1, LOD_MAX_PER);
+  const categories = parseList(req.getQueryParam("category"));
+  const sources = parseList(req.getQueryParam("source"));
+  try {
+    const { sql, params } = buildOverviewQuery(
+      from,
+      to,
+      bucket,
+      per,
+      categories,
+      sources,
+    );
+    const rows = await query(sql, params as Params);
+    const events = rows.map((r) => ({
+      ...rowToEvent(r),
+      bucket: num(r[22]) ?? 0,
+    }));
+    return { from, to, bucket, per, events };
+  } catch (error) {
+    console.error("[TIMELINE] overview query failed:", error);
+    return {
+      from,
+      to,
+      bucket,
+      per,
+      events: [],
+      error: "Overview query failed",
+    };
   }
 }
 
@@ -526,6 +662,9 @@ export async function links(req: HttpRequest): Promise<object> {
 export const timelineHandlers = [
   HttpHandler.get("/timeline", async (req) =>
     HttpResponse.json(await timeline(req)),
+  ),
+  HttpHandler.get("/timeline/overview", async (req) =>
+    HttpResponse.json(await overview(req)),
   ),
   HttpHandler.get("/timeline/density", async (req) =>
     HttpResponse.json(await density(req)),

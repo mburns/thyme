@@ -240,15 +240,23 @@ wherever the dataset has them; they are the join keys between sources.
 
 ### Timeline API
 
-`GET /timeline` (in `wasm/src/timeline.ts`) returns events that
-overlap a year range, with filters for `category`, `source`, `kind`, `span`,
-an entity-name substring `q`, and `participant=<entity id>` for events an
-entity owns or took part in. Pass `anchor=<entity id>` to get every event's
-offset in years (and days, at day precision) from that entity's life, career
-or run. `from=1972&to=1972&span=1` answers "what was going on in 1972". The
-`total` is counted separately and capped (`totalCapped: true` means "at
-least"), so an unfiltered window over millions of events stays fast.
+`GET /timeline` (in `wasm/src/timeline.ts`) returns one page of a window,
+built to be scanned: `events` are those starting inside `from..to`, in
+(start, id) order, read by walking an index and stopping at `limit`;
+`active` are the spans that began before `from` and are still open there
+(lives, careers, runs), from an R*Tree point query; `next` is a keyset
+cursor (`startYear:id`) for the following page, so paging never uses
+OFFSET. Filters: `category`, `source`, `kind`, `span`, an entity-name
+substring `q`, and `participant=<entity id>`. Pass `anchor=<entity id>` to
+get every event's offset in years (and days, at day precision) from that
+entity's life, career or run. The `total` is counted separately and capped
+(`totalCapped: true` means "at least").
 
+- `GET /timeline/overview` is for windows too wide to show every event: the
+  top `per` events per `bucket` (1, 10 or 100 years) and category, served
+  from the precomputed `event_lod` table, so a 500-year view costs the same
+  as a decade. Rank is log(votes) + log(credits) + log(the owner's event
+  count); the ingest recomputes it per source, `make rerank` for all.
 - `GET /timeline/density` returns counts per year bucket and category from
   the precomputed `event_density` table, so histogram strips cost the same
   at any zoom level.

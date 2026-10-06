@@ -12,6 +12,7 @@ help:
 	@echo "  sources      - List timeline data sources and their sync state"
 	@echo "  sync-events  - Import timeline events from sources whose files changed"
 	@echo "  link         - Rebuild entity links (the same person across sources)"
+	@echo "  rerank       - Recompute event rank and the level-of-detail table"
 	@echo "  wikidata-extract DUMP=... - Reduce a Wikidata JSON dump to data/wikidata/"
 	@echo ""
 	@echo "Build and run:"
@@ -51,6 +52,10 @@ sync-events:
 
 link:
 	@python3 scripts/ingest_events.py link
+
+# Recompute event rank and the level-of-detail table for every source
+rerank:
+	@python3 scripts/ingest_events.py rerank
 
 # Reduce a Wikidata JSON dump to data/wikidata/{items,labels}.jsonl.gz.
 # Usage: make wikidata-extract DUMP=path/to/latest-all.json.gz

@@ -18,10 +18,14 @@ jest.mock(
 
 import {
   applyAnchor,
+  buildActiveQuery,
   buildCountQuery,
   buildDensityQuery,
-  buildEventsQuery,
+  buildOverviewQuery,
   buildTrigramMatch,
+  buildWindowQuery,
+  formatCursor,
+  parseCursor,
   parseList,
   parseYear,
   type TimelineEvent,
@@ -38,8 +42,8 @@ const base: TimelineQuery = {
   span: null,
   match: null,
   participant: null,
+  cursor: null,
   limit: 100,
-  offset: 0,
 };
 
 describe("num", () => {
@@ -66,6 +70,16 @@ describe("parseYear", () => {
   });
 });
 
+describe("cursors", () => {
+  it("round-trip and reject garbage", () => {
+    expect(parseCursor("1972:4150")).toEqual({ startYear: 1972, id: 4150 });
+    expect(parseCursor("-384:7")).toEqual({ startYear: -384, id: 7 });
+    expect(parseCursor("abc")).toBeNull();
+    expect(parseCursor(null)).toBeNull();
+    expect(formatCursor({ startYear: 1972, id: 4150 })).toBe("1972:4150");
+  });
+});
+
 describe("buildTrigramMatch", () => {
   it("quotes terms and drops anything shorter than a trigram", () => {
     expect(buildTrigramMatch("odfath 72 AND")).toBe('"odfath" "AND"');
@@ -74,20 +88,19 @@ describe("buildTrigramMatch", () => {
   });
 });
 
-describe("buildEventsQuery", () => {
-  it("always applies the R*Tree overlap bounds and paging, without a window count", () => {
-    const { sql, params } = buildEventsQuery(base);
-    expect(sql).toContain("FROM events_span");
-    expect(sql).toContain("events_span.start_year <= ?");
-    expect(sql).toContain("events_span.end_year >= ?");
+describe("buildWindowQuery", () => {
+  it("scans events starting in the window in (start_year, id) order with one extra row", () => {
+    const { sql, params } = buildWindowQuery(base);
+    expect(sql).toContain("FROM events");
+    expect(sql).not.toContain("events_span");
+    expect(sql).toContain("events.start_year BETWEEN ? AND ?");
+    expect(sql).toContain("ORDER BY events.start_year, events.id");
     expect(sql).toContain("LEFT JOIN entity_links");
-    expect(sql).toContain("row_number() OVER (PARTITION BY events.entity_id");
-    expect(sql).not.toContain("count(*) OVER ()");
-    expect(params).toEqual([1980, 1950, 100, 0]);
+    expect(params).toEqual([1950, 1980, 101]);
   });
 
-  it("adds one placeholder per list item and keeps parameter order", () => {
-    const { sql, params } = buildEventsQuery({
+  it("continues from a keyset cursor and keeps parameter order with filters", () => {
+    const { sql, params } = buildWindowQuery({
       ...base,
       categories: ["film", "tv"],
       sources: ["imdb"],
@@ -95,9 +108,10 @@ describe("buildEventsQuery", () => {
       span: false,
       match: '"god"',
       participant: 42,
+      cursor: { startYear: 1960, id: 777 },
       limit: 10,
-      offset: 20,
     });
+    expect(sql).toContain("(events.start_year, events.id) > (?, ?)");
     expect(sql).toContain("events.category IN (?, ?)");
     expect(sql).toContain("sources.slug IN (?)");
     expect(sql).toContain("events.kind IN (?)");
@@ -107,8 +121,10 @@ describe("buildEventsQuery", () => {
       "SELECT event_id FROM event_participants WHERE entity_id = ?",
     );
     expect(params).toEqual([
-      1980,
       1950,
+      1980,
+      1960,
+      777,
       "film",
       "tv",
       "imdb",
@@ -117,14 +133,27 @@ describe("buildEventsQuery", () => {
       '"god"',
       42,
       42,
-      10,
-      20,
+      11,
     ]);
   });
 });
 
+describe("buildActiveQuery", () => {
+  it("asks the R*Tree for spans open at the window start that began earlier", () => {
+    const { sql, params } = buildActiveQuery({
+      ...base,
+      categories: ["baseball"],
+    });
+    expect(sql).toContain("FROM events_span");
+    expect(sql).toContain("events_span.start_year < ?");
+    expect(sql).toContain("events_span.end_year >= ?");
+    expect(sql).toContain("events.span = 1");
+    expect(params).toEqual([1950, 1950, "baseball", 100]);
+  });
+});
+
 describe("buildCountQuery", () => {
-  it("shares the filter and stops counting at the cap", () => {
+  it("counts window starts with the shared filter and stops at the cap", () => {
     const { sql, params } = buildCountQuery(
       { ...base, categories: ["film"] },
       10000,
@@ -132,7 +161,23 @@ describe("buildCountQuery", () => {
     expect(sql).toContain("SELECT count(*) FROM (");
     expect(sql).toContain("events.category IN (?)");
     expect(sql).toContain("LIMIT ?)");
-    expect(params).toEqual([1980, 1950, "film", 10000]);
+    expect(params).toEqual([1950, 1980, "film", 10000]);
+  });
+});
+
+describe("buildOverviewQuery", () => {
+  it("reads the LOD table for the bucket size, flooring the start bucket", () => {
+    const { sql, params } = buildOverviewQuery(1955, 1980, 10, 5, ["film"], []);
+    expect(sql).toContain("FROM event_lod");
+    expect(sql).toContain("event_lod.bucket_size = ?");
+    expect(sql).toContain("event_lod.pos <= ?");
+    expect(sql).toContain("ORDER BY event_lod.bucket, events.rank DESC");
+    expect(params).toEqual([10, 1950, 1980, 5, "film"]);
+  });
+
+  it("floors negative years", () => {
+    const { params } = buildOverviewQuery(-384, -300, 100, 3, [], []);
+    expect(params.slice(0, 3)).toEqual([100, -400, -300]);
   });
 });
 
@@ -168,6 +213,7 @@ describe("applyAnchor", () => {
     endYear: null,
     span: false,
     category: "film",
+    rank: 0,
     detail: null,
     startJulian,
     endJulian: null,
@@ -180,7 +226,6 @@ describe("applyAnchor", () => {
       source: "imdb",
       canonicalId: null,
     },
-    seq: 1,
   });
 
   it("computes year offsets always and day offsets only at day precision", () => {

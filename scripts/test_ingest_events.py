@@ -784,5 +784,88 @@ class CsvSourceTest(IngestTest):
         )
 
 
+class ScanScaleTest(IngestTest):
+    """Rank, the level-of-detail table and the scan indexes."""
+
+    def test_rank_reflects_votes_participants_and_entity_breadth(self) -> None:
+        self.sync_all()
+        godfather, obscure = (
+            self.conn.execute(
+                "SELECT rank FROM events WHERE external_id = ?", (eid,)
+            ).fetchone()[0]
+            for eid in ("tt0068646:release", "tt0098904:run")
+        )
+        # 2M votes and three credits beat 350k votes and no credits.
+        self.assertGreater(godfather, obscure)
+        aaron, nobody = (
+            self.conn.execute(
+                "SELECT rank FROM events WHERE external_id = ?", (eid,)
+            ).fetchone()[0]
+            for eid in ("aaronha01:life", "mathed01:life")
+        )
+        # Aaron owns more events (awards, All-Star games, Hall of Fame).
+        self.assertGreater(aaron, nobody)
+
+    def test_lod_keeps_the_top_events_per_bucket(self) -> None:
+        self.sync_all()
+        sizes = [
+            r[0]
+            for r in self.conn.execute(
+                "SELECT DISTINCT bucket_size FROM event_lod ORDER BY 1"
+            )
+        ]
+        self.assertEqual(sizes, [1, 10, 100])
+        self.assertEqual(self.count("SELECT COUNT(*) FROM event_lod WHERE pos > 20"), 0)
+        # Negative years bucket downwards: Aristotle (-384) is in -400.
+        row = self.conn.execute(
+            "SELECT bucket FROM event_lod JOIN events ON events.id = event_id "
+            "WHERE bucket_size = 100 AND events.label = 'Aristotle'"
+        ).fetchone()
+        self.assertEqual(row, (-400,))
+        # The best film of the 1970s bucket is The Godfather.
+        top = self.conn.execute(
+            "SELECT events.label FROM event_lod JOIN events ON events.id = event_id "
+            "WHERE bucket_size = 10 AND bucket = 1970 AND event_lod.category = 'film' "
+            "ORDER BY pos LIMIT 1"
+        ).fetchone()
+        self.assertEqual(top, ("The Godfather",))
+        # Re-syncing a source rebuilds only its slice; totals stay consistent.
+        before = self.count("SELECT COUNT(*) FROM event_lod")
+        self.syncer.sync(SOURCES["lahman"], force=True)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM event_lod"), before)
+
+    def test_window_scan_uses_an_ordered_index(self) -> None:
+        self.sync_all()
+        plan = " ".join(
+            r[3]
+            for r in self.conn.execute(
+                "EXPLAIN QUERY PLAN SELECT events.id FROM events "
+                "WHERE events.category = 'baseball' AND events.start_year BETWEEN 1950 AND 1980 "
+                "AND (events.start_year, events.id) > (1957, 0) "
+                "ORDER BY events.start_year, events.id LIMIT 50"
+            )
+        )
+        self.assertIn("events_by_category", plan)
+        self.assertNotIn("TEMP B-TREE", plan)
+        plan = " ".join(
+            r[3]
+            for r in self.conn.execute(
+                "EXPLAIN QUERY PLAN SELECT events.id FROM events "
+                "WHERE events.start_year BETWEEN 1950 AND 1980 "
+                "ORDER BY events.start_year, events.id LIMIT 50"
+            )
+        )
+        self.assertIn("events_by_start", plan)
+        self.assertNotIn("TEMP B-TREE", plan)
+
+    def test_rerank_covers_every_source(self) -> None:
+        self.sync_all()
+        self.conn.execute("UPDATE events SET rank = 0")
+        self.conn.execute("DELETE FROM event_lod")
+        self.assertEqual(self.syncer.rerank(), len(SOURCES))
+        self.assertGreater(self.count("SELECT COUNT(*) FROM event_lod"), 0)
+        self.assertGreater(self.count("SELECT COUNT(*) FROM events WHERE rank > 0"), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

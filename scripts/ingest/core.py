@@ -432,6 +432,39 @@ JOIN entities c ON c.id = ci.entity_id AND c.source_id = ?
 WHERE e.source_id <> c.source_id
 """
 
+# Importance of an event: audience (votes), cast (participants) and how much
+# else is known about its owner. log10 needs SQLite's math functions, which
+# Python's module has; the fallback keeps the ingest working without them.
+UPDATE_RANK = """
+UPDATE events SET rank =
+    coalesce(log10(1 + coalesce(json_extract(detail, '$.votes'), 0)), 0)
+  + coalesce((SELECT log10(1 + count(*)) FROM event_participants p
+               WHERE p.event_id = events.id), 0)
+  + coalesce((SELECT log10(count(*)) FROM events o
+               WHERE o.entity_id = events.entity_id), 0)
+WHERE source_id = ?
+"""
+UPDATE_RANK_FALLBACK = """
+UPDATE events SET rank = coalesce(json_extract(detail, '$.votes'), 0)
+WHERE source_id = ?
+"""
+
+LOD_SIZES = (1, 10, 100)
+LOD_KEEP = 20
+
+# Top LOD_KEEP events per (bucket, category) for one bucket size and source.
+# The bucket expression floors correctly for negative years.
+INSERT_LOD = """
+INSERT INTO event_lod (bucket_size, bucket, category, source_id, pos, event_id)
+SELECT ?, bucket, category, source_id, pos, id FROM (
+  SELECT start_year - (((start_year % ?) + ?) % ?) AS bucket, category, source_id, id,
+         row_number() OVER (
+           PARTITION BY start_year - (((start_year % ?) + ?) % ?), category
+           ORDER BY rank DESC, id) AS pos
+  FROM events WHERE source_id = ?)
+WHERE pos <= ?
+"""
+
 INSERT_DENSITY = """
 INSERT INTO event_density (source_id, category, year, count)
 SELECT source_id, category, start_year, count(*)
@@ -674,6 +707,7 @@ class Syncer:
         conn.execute(INSERT_IDENTIFIERS, (sid,))
         conn.execute("DELETE FROM event_density WHERE source_id = ?", (sid,))
         conn.execute(INSERT_DENSITY, (sid,))
+        self._rank_and_lod(sid)
         # entities_fts follows entities through triggers (see the
         # entities_fts_triggers migration), so no rebuild is needed here.
         conn.commit()
@@ -701,6 +735,30 @@ class Syncer:
             events_deleted,
             participants_written,
         )
+
+    def _rank_and_lod(self, source_id: int) -> None:
+        """Recompute `events.rank` and the level-of-detail table for a source."""
+        try:
+            self.conn.execute(UPDATE_RANK, (source_id,))
+        except sqlite3.OperationalError as e:
+            if "no such function" not in str(e):
+                raise
+            logger.warning("SQLite math functions unavailable; using vote-count rank")
+            self.conn.execute(UPDATE_RANK_FALLBACK, (source_id,))
+        self.conn.execute("DELETE FROM event_lod WHERE source_id = ?", (source_id,))
+        for size in LOD_SIZES:
+            self.conn.execute(
+                INSERT_LOD,
+                (size, size, size, size, size, size, size, source_id, LOD_KEEP),
+            )
+
+    def rerank(self) -> int:
+        """Recompute rank and LOD for every source (after the scale migration)."""
+        rows = self.conn.execute("SELECT id FROM sources").fetchall()
+        for (source_id,) in rows:
+            self._rank_and_lod(int(source_id))
+        self.conn.commit()
+        return len(rows)
 
     def link(self) -> LinkResult:
         """Rebuild ``entity_links``: resolve duplicates to canonical entities.
