@@ -22,6 +22,7 @@
       "!traildepot/trailbase.d.ts",
       "!dist/**/*",
       "!wasm/dist/**/*",
+      "!scripts/fixtures/**/*",
       "!node_modules/**/*",
       "!.mypy_cache/**/*",
       "!venv/**/*"

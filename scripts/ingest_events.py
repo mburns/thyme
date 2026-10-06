@@ -49,6 +49,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         type=int,
         help="only titles with at least this many votes (default 1000)",
     )
+    sync.add_argument(
+        "--no-imdb-episodes",
+        action="store_true",
+        help="skip the episodes of included series (on by default)",
+    )
     return parser.parse_args(argv)
 
 
@@ -91,9 +96,11 @@ def cmd_sync(syncer: Syncer, args: argparse.Namespace) -> int:
         print(f"unknown source(s): {', '.join(unknown)}; known: {', '.join(SOURCES)}")
         return 2
 
-    options = {}
+    options: dict[str, object] = {}
     if args.imdb_min_votes is not None:
         options["imdb_min_votes"] = args.imdb_min_votes
+    if args.no_imdb_episodes:
+        options["imdb_episodes"] = False
 
     failed = False
     synced = False

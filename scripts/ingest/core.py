@@ -673,7 +673,8 @@ class Syncer:
         conn.execute(INSERT_IDENTIFIERS, (sid,))
         conn.execute("DELETE FROM event_density WHERE source_id = ?", (sid,))
         conn.execute(INSERT_DENSITY, (sid,))
-        conn.execute("INSERT INTO entities_fts(entities_fts) VALUES ('rebuild')")
+        # entities_fts follows entities through triggers (see the
+        # entities_fts_triggers migration), so no rebuild is needed here.
         conn.commit()
         conn.executescript(DROP_STAGE)
         # Refresh planner statistics (STAT4 histograms) for the tables that

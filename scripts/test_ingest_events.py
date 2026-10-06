@@ -123,14 +123,23 @@ class IngestTest(unittest.TestCase):
             INSERT INTO titles (id, tconst, titleType, primaryTitle, startYear, endYear, genres)
             VALUES (1, 'tt0068646', 'movie', 'The Godfather', 1972, NULL, 'Crime,Drama'),
                    (2, 'tt0098904', 'tvSeries', 'Seinfeld', 1989, 1998, 'Comedy'),
-                   (3, 'tt9999999', 'movie', 'Obscure', 2001, NULL, NULL);
-            INSERT INTO ratings VALUES (1, 9.2, 2000000), (2, 8.9, 350000), (3, 5.0, 12);
+                   (3, 'tt9999999', 'movie', 'Obscure', 2001, NULL, NULL),
+                   (4, 'tt0697784', 'tvEpisode', 'The Contest', 1992, NULL, 'Comedy'),
+                   (5, 'tt0098286', 'tvEpisode', 'The Seinfeld Chronicles', 1989, NULL, 'Comedy'),
+                   (6, 'tt0000006', 'tvEpisode', 'Orphan Episode', 1995, NULL, NULL);
+            INSERT INTO ratings VALUES (1, 9.2, 2000000), (2, 8.9, 350000), (3, 5.0, 12), (4, 9.4, 8000);
+            INSERT INTO episodes (title_id, parent_title_id, seasonNumber, episodeNumber)
+            VALUES (4, 2, 4, 11), (5, 2, 1, 1), (6, 3, 1, 1);
             INSERT INTO persons (id, nconst, primaryName, birthYear, deathYear, primaryProfession)
             VALUES (1, 'nm0000008', 'Marlon Brando', 1924, 2004, 'actor,director'),
                    (2, 'nm0000001', 'Nameless', NULL, NULL, 'actor'),
-                   (3, 'nm0000338', 'Francis Ford Coppola', 1939, NULL, 'director');
+                   (3, 'nm0000338', 'Francis Ford Coppola', 1939, NULL, 'director'),
+                   (4, 'nm0000002', 'Larry David', NULL, NULL, 'writer');
             INSERT INTO principals (title_id, person_id, ordering, category)
-            VALUES (1, 1, 1, 'actor'), (1, 2, 2, 'actor'), (1, 3, 3, 'director');
+            VALUES (1, 1, 1, 'actor'), (1, 2, 2, 'actor'), (1, 3, 3, 'director'),
+                   (4, 2, 1, 'actor');
+            INSERT INTO crew (title_id, person_id, role)
+            VALUES (4, 4, 'writer'), (1, 3, 'director');
             """
         )
         self.conn.commit()
@@ -172,8 +181,11 @@ class IngestTest(unittest.TestCase):
             self.events_for("olympics"), {"games": 2, "competed": 2, "medal": 2}
         )
         self.assertEqual(self.events_for("wikidata_age"), {"life": 7})
-        # Titles under the vote threshold and people without a birth year are left out.
-        self.assertEqual(self.events_for("imdb"), {"release": 1, "run": 1, "life": 2})
+        # Titles under the vote threshold are left out, and with them their
+        # episodes; people without a birth year have no life span.
+        self.assertEqual(
+            self.events_for("imdb"), {"release": 1, "run": 1, "life": 2, "episode": 2}
+        )
         wikidata = self.events_for("wikidata")
         self.assertEqual(
             {k: v for k, v in wikidata.items() if k != "award"},
@@ -370,7 +382,8 @@ class SqliteFeaturesTest(IngestTest):
         rows = self.conn.execute(
             "SELECT genre, title_count FROM genres ORDER BY genre"
         ).fetchall()
-        self.assertEqual(rows, [("Comedy", 1), ("Crime", 1), ("Drama", 1)])
+        # Seinfeld and its two episodes are all Comedy.
+        self.assertEqual(rows, [("Comedy", 3), ("Crime", 1), ("Drama", 1)])
         titles = self.conn.execute(
             "SELECT primaryTitle, numVotes FROM v_genre_titles WHERE genre = 'Drama'"
         ).fetchall()
@@ -418,9 +431,21 @@ class ScaleModelTest(IngestTest):
             "JOIN entities ON entities.id = event_participants.entity_id "
             "WHERE events.external_id = 'tt0068646:release' ORDER BY 1"
         ).fetchall()
-        # 'Nameless' has no birth year, hence no entity, hence no participation.
+        # 'Nameless' has no birth year but is credited, so is an entity with
+        # no life span; the crew table adds nothing new for Coppola.
         self.assertEqual(
-            cast, [("Francis Ford Coppola", "director"), ("Marlon Brando", "actor")]
+            cast,
+            [
+                ("Francis Ford Coppola", "director"),
+                ("Marlon Brando", "actor"),
+                ("Nameless", "actor"),
+            ],
+        )
+        self.assertEqual(
+            self.count(
+                "SELECT COUNT(*) FROM events WHERE external_id = 'nm0000001:life'"
+            ),
+            0,
         )
         # Participants are rebuilt on every sync, never duplicated.
         self.syncer.sync(SOURCES["lahman"], force=True)
@@ -430,6 +455,43 @@ class ScaleModelTest(IngestTest):
                 "(SELECT id FROM events WHERE external_id = 'ATL:championship:1957')"
             ),
             2,
+        )
+
+    def test_episodes_sit_on_the_series_lane_with_their_credits(self) -> None:
+        self.syncer.sync(SOURCES["imdb"])
+        episodes = self.conn.execute(
+            "SELECT label, start_year, entity_name, detail ->> 'season', detail ->> 'episode', "
+            "detail ->> 'votes' FROM v_events WHERE kind = 'episode' ORDER BY start_year"
+        ).fetchall()
+        self.assertEqual(
+            episodes,
+            [
+                ("The Seinfeld Chronicles", 1989, "Seinfeld", 1, 1, None),
+                ("The Contest", 1992, "Seinfeld", 4, 11, 8000),
+            ],
+        )
+        credits = self.conn.execute(
+            "SELECT entities.name, event_participants.role FROM event_participants "
+            "JOIN events ON events.id = event_participants.event_id "
+            "JOIN entities ON entities.id = event_participants.entity_id "
+            "WHERE events.external_id = 'tt0697784:episode' ORDER BY 1"
+        ).fetchall()
+        self.assertEqual(credits, [("Larry David", "writer"), ("Nameless", "actor")])
+        # The episode's people exist as entities and carry IMDb ids for linking.
+        self.assertEqual(
+            self.conn.execute(
+                "SELECT value FROM entity_identifiers JOIN entities ON entities.id = entity_id "
+                "WHERE entities.name = 'Larry David'"
+            ).fetchone(),
+            ("nm0000002",),
+        )
+
+    def test_episodes_can_be_switched_off(self) -> None:
+        result = self.syncer.sync(SOURCES["imdb"], options={"imdb_episodes": False})
+        self.assertEqual(result.status, "ok")
+        self.assertNotIn("episode", self.events_for("imdb"))
+        self.assertEqual(
+            self.count("SELECT COUNT(*) FROM entities WHERE name = 'Larry David'"), 0
         )
 
     def test_certainty_defaults_to_exact(self) -> None:

@@ -201,7 +201,7 @@ flattened read model and `entities_fts` the name index.
 
 | Source | Files | Events |
 |---|---|---|
-| `imdb` | derived from the imported `titles`/`persons` tables | title releases and series runs (titles with at least 1000 votes), people's life spans |
+| `imdb` | derived from the imported `titles`/`persons`/`episodes`/`principals`/`crew` tables | title releases and series runs (titles with at least 1000 votes), every episode of an included series on the series' lane, the full cast and crew of each as participants, people's life spans, IMDb ids for linking |
 | `lahman` | `data/sports/baseball/*.csv` | player life and career spans, awards, All-Star games, Hall of Fame, franchise runs and World Series wins |
 | `olympics` | `data/sports/olympic_events/athlete_events.csv` | each Games, each athlete appearance, each medal |
 | `wikidata_age` | `data/wiki/AgeDataset-V*.csv` | 1.2M people's life spans with Wikidata QIDs and occupation |
@@ -211,7 +211,15 @@ flattened read model and `entities_fts` the name index.
 make sources        # list sources, row counts, last sync, whether files changed
 make sync-events    # import every source whose files changed
 python3 scripts/ingest_events.py sync --force imdb --imdb-min-votes 500
+python3 scripts/ingest_events.py sync --force imdb --no-imdb-episodes   # titles only
 ```
+
+IMDB scales with the vote threshold: at 1,000 votes roughly 100k titles,
+a few million episodes and tens of millions of credits; at 100 votes about
+three times as many titles. Episodes are instants on their series' lane
+(`kind=episode`, season and episode number in `detail`), never stand-alone
+titles, and people are entities as soon as they are credited, with a life
+span only when IMDB knows a birth year.
 
 Each sync fingerprints the source's files (path, size, mtime), skips the
 source if nothing changed, upserts rows by their stable per-source key,
