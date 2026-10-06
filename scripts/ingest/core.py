@@ -435,19 +435,37 @@ WHERE e.source_id <> c.source_id
 # Importance of an event: audience (votes), cast (participants) and how much
 # else is known about its owner. log10 needs SQLite's math functions, which
 # Python's module has; the fallback keeps the ingest working without them.
+# The two counts are aggregated once into keyed temp tables rather than
+# re-counted per event: a correlated count per row took 40 minutes over
+# 6M events, this takes a few.
+RANK_PREPARE = """
+DROP TABLE IF EXISTS rank_credits;
+DROP TABLE IF EXISTS rank_owner;
+CREATE TEMP TABLE rank_credits (event_id INTEGER PRIMARY KEY, n INTEGER NOT NULL) WITHOUT ROWID;
+CREATE TEMP TABLE rank_owner (entity_id INTEGER PRIMARY KEY, n INTEGER NOT NULL) WITHOUT ROWID;
+"""
+RANK_CREDITS = """
+INSERT INTO rank_credits (event_id, n)
+SELECT p.event_id, count(*) FROM events e
+CROSS JOIN event_participants p ON p.event_id = e.id
+WHERE e.source_id = ? GROUP BY p.event_id
+"""
+RANK_OWNER = """
+INSERT INTO rank_owner (entity_id, n)
+SELECT entity_id, count(*) FROM events WHERE source_id = ? GROUP BY entity_id
+"""
 UPDATE_RANK = """
 UPDATE events SET rank =
     coalesce(log10(1 + coalesce(json_extract(detail, '$.votes'), 0)), 0)
-  + coalesce((SELECT log10(1 + count(*)) FROM event_participants p
-               WHERE p.event_id = events.id), 0)
-  + coalesce((SELECT log10(count(*)) FROM events o
-               WHERE o.entity_id = events.entity_id), 0)
+  + coalesce((SELECT log10(1 + n) FROM rank_credits WHERE event_id = events.id), 0)
+  + coalesce((SELECT log10(n) FROM rank_owner WHERE entity_id = events.entity_id), 0)
 WHERE source_id = ?
 """
 UPDATE_RANK_FALLBACK = """
 UPDATE events SET rank = coalesce(json_extract(detail, '$.votes'), 0)
 WHERE source_id = ?
 """
+RANK_CLEANUP = "DROP TABLE IF EXISTS rank_credits; DROP TABLE IF EXISTS rank_owner;"
 
 LOD_SIZES = (1, 10, 100)
 LOD_KEEP = 20
@@ -738,6 +756,9 @@ class Syncer:
 
     def _rank_and_lod(self, source_id: int) -> None:
         """Recompute `events.rank` and the level-of-detail table for a source."""
+        self.conn.executescript(RANK_PREPARE)
+        self.conn.execute(RANK_CREDITS, (source_id,))
+        self.conn.execute(RANK_OWNER, (source_id,))
         try:
             self.conn.execute(UPDATE_RANK, (source_id,))
         except sqlite3.OperationalError as e:
@@ -745,6 +766,7 @@ class Syncer:
                 raise
             logger.warning("SQLite math functions unavailable; using vote-count rank")
             self.conn.execute(UPDATE_RANK_FALLBACK, (source_id,))
+        self.conn.executescript(RANK_CLEANUP)
         self.conn.execute("DELETE FROM event_lod WHERE source_id = ?", (source_id,))
         for size in LOD_SIZES:
             self.conn.execute(
