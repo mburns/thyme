@@ -4,7 +4,8 @@
 
 - TrailBase v0.34 or newer (`trail` on your PATH), from
   https://github.com/trailbaseio/trailbase/releases
-- Node.js 20+ and Yarn 1.22 (pinned through Volta in `package.json`)
+- Node.js 22.20+ (the WASM componentizer's native modules need it) and Yarn
+  1.22, pinned through Volta in `package.json`
 - Python 3.11+ with `ruff` (`pip install -r requirements.txt`)
 - `sqlite3`, `curl`, `gunzip`
 

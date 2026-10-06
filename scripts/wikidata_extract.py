@@ -119,9 +119,8 @@ QUALIFIER_DATES = ("P585", "P580", "P582")
 # ids as a P31 value, so skip json.loads for the ~90% of lines that cannot
 # match. Humans are the bulk: "numeric-id":5 is unambiguous enough.
 _CLASS_IDS = set().union(*KINDS.values())
-_PREFILTER = re.compile(
-    r'"numeric-id":(%s)[,}]' % "|".join(sorted({c[1:] for c in _CLASS_IDS}))
-)
+_CLASS_ALTERNATION = "|".join(sorted({c[1:] for c in _CLASS_IDS}))
+_PREFILTER = re.compile(rf'"numeric-id":({_CLASS_ALTERNATION})[,}}]')
 
 
 def open_dump(path: str) -> IO[str]:

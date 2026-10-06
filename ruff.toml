@@ -1,0 +1,14 @@
+# Shared ruff settings so local runs and CI agree regardless of ruff version.
+line-length = 88
+target-version = "py311"
+
+# The legacy IMDB import scripts predate these rules; they are linted with
+# the default rule set only.
+extend-exclude = ["scripts/import_imdb_sqlite.py", "scripts/import_imdb_api.py", "scripts/sql_queries.py"]
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+  "E501",   # line length is the formatter's job
+  "SIM115", # open() handles returned to callers are intentional (dump streams)
+]

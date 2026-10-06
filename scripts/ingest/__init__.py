@@ -6,7 +6,7 @@ sync engine and the ``Source`` interface adapters implement.
 
 from __future__ import annotations
 
-from ingest.core import Entity, Event, Source, SyncResult, Syncer, iso_date
+from ingest.core import Entity, Event, Source, Syncer, SyncResult, iso_date
 from ingest.sources import SOURCES
 
 __all__ = [
