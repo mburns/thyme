@@ -136,7 +136,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"database not found: {args.db_path} (start TrailBase once to create it)")
         return 1
 
-    conn = sqlite3.connect(args.db_path)
+    # A running TrailBase keeps readers on the database; a long busy timeout
+    # lets the rerank's big write transactions wait them out instead of
+    # failing with "database is locked".
+    conn = sqlite3.connect(args.db_path, timeout=300)
     try:
         syncer = Syncer(conn, args.data_dir)
         if args.command == "list":

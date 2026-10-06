@@ -95,6 +95,7 @@ DATE_PROPS = {
     "P571": "inception",
     "P576": "dissolved",
     "P585": "point",
+    "P577": "published",
 }
 ID_PROPS = {
     "P345": "imdb",
@@ -121,6 +122,8 @@ QUALIFIER_DATES = ("P585", "P580", "P582")
 _CLASS_IDS = set().union(*KINDS.values())
 _CLASS_ALTERNATION = "|".join(sorted({c[1:] for c in _CLASS_IDS}))
 _PREFILTER = re.compile(rf'"numeric-id":({_CLASS_ALTERNATION})[,}}]')
+# With --all-dated any item that has a date statement is a candidate.
+_DATE_PREFILTER = re.compile(rf'"({"|".join(DATE_PROPS)})":\[')
 
 
 def open_dump(path: str) -> IO[str]:
@@ -200,8 +203,27 @@ def classify(classes: list[str]) -> str | None:
     return None
 
 
-def extract(entity: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """Return (label record, item record or None) for one dump entity."""
+def _dates(entity: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {}
+    for prop, name in DATE_PROPS.items():
+        for s in _claims(entity, prop):
+            v = _value(s["mainsnak"])
+            t = wikidata_time(v) if isinstance(v, dict) else None
+            if t:
+                out[name] = t
+                break
+    return out
+
+
+def extract(
+    entity: dict[str, Any], all_dated: bool = False
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Return (label record, item record or None) for one dump entity.
+
+    With ``all_dated`` an item of any other class is kept as kind ``dated``
+    when it carries at least one calendar date: a stub the ingest can place
+    on the timeline under its first class, to be refined later.
+    """
     qid = entity["id"]
     label = entity.get("labels", {}).get("en", {}).get("value")
     description = entity.get("descriptions", {}).get("en", {}).get("value")
@@ -216,6 +238,9 @@ def extract(entity: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | No
     }
 
     kind = classify(classes)
+    dates = _dates(entity) if kind is not None or all_dated else {}
+    if kind is None and all_dated and dates and classes:
+        kind = "dated"
     if kind is None or not label:
         return label_record, None
 
@@ -226,14 +251,11 @@ def extract(entity: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | No
         "description": description,
         "classes": classes[:5],
         "enwiki": entity.get("sitelinks", {}).get("enwiki", {}).get("title"),
+        **dates,
     }
-    for prop, name in DATE_PROPS.items():
-        for s in _claims(entity, prop):
-            v = _value(s["mainsnak"])
-            t = wikidata_time(v) if isinstance(v, dict) else None
-            if t:
-                item[name] = t
-                break
+    if kind == "dated":
+        # Stubs keep only what places them in time; relations are skipped.
+        return label_record, item
     for prop, name in ID_PROPS.items():
         values = [
             v
@@ -262,7 +284,13 @@ def extract(entity: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | No
     return label_record, item
 
 
-def run(dump: str, out_dir: Path, limit: int | None, log_every: int) -> tuple[int, int]:
+def run(
+    dump: str,
+    out_dir: Path,
+    limit: int | None,
+    log_every: int,
+    all_dated: bool = False,
+) -> tuple[int, int]:
     out_dir.mkdir(parents=True, exist_ok=True)
     items_path = out_dir / "items.jsonl.gz"
     labels_path = out_dir / "labels.jsonl.gz"
@@ -278,7 +306,10 @@ def run(dump: str, out_dir: Path, limit: int | None, log_every: int) -> tuple[in
             if limit is not None and seen > limit:
                 break
             # Labels for everything; full parse only for candidate lines.
-            if not _PREFILTER.search(line):
+            candidate = _PREFILTER.search(line) is not None or (
+                all_dated and _DATE_PREFILTER.search(line) is not None
+            )
+            if not candidate:
                 head = _cheap_label(line)
                 if head is not None:
                     labels_out.write(json.dumps(head, ensure_ascii=False) + "\n")
@@ -290,7 +321,7 @@ def run(dump: str, out_dir: Path, limit: int | None, log_every: int) -> tuple[in
                 continue
             if entity.get("type") != "item":
                 continue
-            label_record, item = extract(entity)
+            label_record, item = extract(entity, all_dated)
             if label_record["label"]:
                 labels_out.write(json.dumps(label_record, ensure_ascii=False) + "\n")
             if item is not None:
@@ -347,9 +378,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", type=Path, default=Path("data") / "wikidata")
     parser.add_argument("--limit", type=int, help="stop after this many dump lines")
     parser.add_argument("--log-every", type=int, default=1_000_000)
+    parser.add_argument(
+        "--all-dated",
+        action="store_true",
+        help="also keep every item with a calendar date as a 'dated' stub "
+        "(tens of millions of items: expect a much larger items file)",
+    )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    run(args.dump, args.out_dir, args.limit, args.log_every)
+    run(args.dump, args.out_dir, args.limit, args.log_every, args.all_dated)
     return 0
 
 

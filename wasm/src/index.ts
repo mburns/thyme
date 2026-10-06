@@ -6,10 +6,11 @@
 /// needs a rebuild plus SIGHUP.
 
 import { defineConfig } from "trailbase-wasm";
+import { domainHandlers } from "./domains";
 import { searchHandlers } from "./search";
 import { timelineHandlers } from "./timeline";
 
 export const { initEndpoint, incomingHandler, sqliteFunctionEndpoint } =
   defineConfig({
-    httpHandlers: [...searchHandlers, ...timelineHandlers],
+    httpHandlers: [...searchHandlers, ...timelineHandlers, ...domainHandlers],
   });

@@ -3,34 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Thyme IMDB{% endblock %}</title>
+    <title>{% block title %}Thyme{% endblock %}</title>
     <link rel="stylesheet" href="/static/style.css">
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+    {% block head %}{% endblock %}
 </head>
 <body>
     <header>
-        <h1><a href="/">Thyme IMDB</a></h1>
+        <h1><a href="/">Thyme</a> <small>when things happened, side by side</small></h1>
         <nav>
             <ul class="nav-links">
-                <li><a href="/index.html">Home</a></li>
-                <li><a href="/about.html">About</a></li>
-                <li><a href="/movies.html">Movies</a></li>
-                <li><a href="/tv.html">TV</a></li>
-                <li><a href="/persons.html">People</a></li>
-                <li><a href="/genres.html">Genres</a></li>
-                <li><a href="/top-rated.html">Top Rated</a></li>
-                <li><a href="/videogame.html">Video Games</a></li>
+                <li><a href="/timeline.html">Timeline</a></li>
+                <li><a href="/browse.html">Browse</a></li>
+                <li><a href="/sources.html">Sources</a></li>
                 <li><a href="/search.html">Search</a></li>
+                <li><a href="/about.html">About</a></li>
             </ul>
         </nav>
     </header>
 
-    <main class="container">
+    <main class="{% block main_class %}container{% endblock %}">
         {% block content %}{% endblock %}
     </main>
 
     <footer>
-        <p>Powered by <a href="https://trailbase.io">TrailBase</a> and Alpine.js. <a href="https://datasets.imdbws.com/">Data from IMDB</a>.</p>
+        <p>Powered by <a href="https://trailbase.io">TrailBase</a> and SQLite. Data from <a href="/sources.html">several open datasets</a>, each under its own licence.</p>
     </footer>
 
     {% block scripts %}{% endblock %}

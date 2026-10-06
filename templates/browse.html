@@ -1,0 +1,194 @@
+{% extends "_base.html" %}
+
+{% block title %}Browse | Thyme{% endblock %}
+
+{% block content %}
+<div x-data="browseApp()">
+    <p x-show="loading">Loading…</p>
+    <p x-show="error" x-text="error" class="error"></p>
+
+    <!-- All domains -->
+    <template x-if="!current && !loading">
+        <div>
+            <h1>Browse by domain</h1>
+            <p>
+                Events are grouped into a few domains so the menu stays short while the data keeps growing.
+                A domain is a set of event categories and kinds; grey chips are categories we have planned
+                but not ingested yet. Everything is also on the <a href="/timeline.html">timeline</a>.
+            </p>
+            <div class="cards">
+                <template x-for="d in domains" :key="d.slug">
+                    <article class="card" :class="{ stub: d.events === 0 }">
+                        <h2><a :href="'/browse.html?domain=' + d.slug" x-text="d.name"></a></h2>
+                        <p x-text="d.blurb"></p>
+                        <p>
+                            <strong x-text="d.events.toLocaleString()"></strong> events
+                            <span x-show="d.firstYear !== null" x-text="`· ${year(d.firstYear)} – ${year(d.lastYear)}`"></span>
+                            <span x-show="d.events === 0">· <em>planned</em></span>
+                        </p>
+                        <p class="chips">
+                            <template x-for="c in d.categoryCounts.slice(0, 6)" :key="c.category">
+                                <span class="chip" :class="{ muted: c.events === 0 }" x-text="c.category"></span>
+                            </template>
+                        </p>
+                    </article>
+                </template>
+            </div>
+        </div>
+    </template>
+
+    <!-- One domain -->
+    <template x-if="current">
+        <div>
+            <p><a href="/browse.html">← All domains</a></p>
+            <h1 x-text="current.name"></h1>
+            <p x-text="current.blurb"></p>
+            <p>
+                <strong x-text="current.events.toLocaleString()"></strong> events
+                <span x-show="current.firstYear !== null" x-text="`from ${year(current.firstYear)} to ${year(current.lastYear)}`"></span>
+                <span x-show="current.sources.length" x-text="'· sources: ' + current.sources.join(', ')"></span>
+            </p>
+            <p>
+                <a class="button" :href="timelineUrl(current)">Open on the timeline</a>
+                <a class="button secondary" x-show="current.slug === 'film'" href="/movies.html">IMDB tables</a>
+            </p>
+
+            <h2>Categories</h2>
+            <p class="chips">
+                <template x-for="c in current.categoryCounts" :key="c.category">
+                    <a class="chip" :class="{ muted: c.events === 0 }"
+                       :href="c.events ? `/timeline.html?category=${encodeURIComponent(c.category)}` : null"
+                       :title="c.events ? '' : 'No events yet'"
+                       x-text="c.events ? `${c.category} · ${c.events.toLocaleString()}` : c.category"></a>
+                </template>
+                <template x-for="k in current.kinds" :key="k">
+                    <a class="chip kind" :href="`/timeline.html?kind=${encodeURIComponent(k)}`" x-text="'kind: ' + k"></a>
+                </template>
+            </p>
+
+            <h2>Planned</h2>
+            <ul class="planned">
+                <template x-for="p in current.planned" :key="p">
+                    <li x-text="p"></li>
+                </template>
+            </ul>
+
+            <h2>Highlights by century</h2>
+            <p x-show="highlights.length === 0 && !loadingHighlights">No events in this domain yet.</p>
+            <p x-show="loadingHighlights">Loading highlights…</p>
+            <template x-for="bucket in highlights" :key="bucket.year">
+                <div class="century">
+                    <h3 x-text="centuryLabel(bucket.year)"></h3>
+                    <ul>
+                        <template x-for="e in bucket.events" :key="e.id">
+                            <li>
+                                <span class="when" x-text="dates(e)"></span>
+                                <a :href="'/entity.html#' + e.entity.id" x-text="e.label"></a>
+                                <small x-show="e.entity.name !== e.label" x-text="'· ' + e.entity.name"></small>
+                                <small class="muted" x-text="'· ' + e.category"></small>
+                            </li>
+                        </template>
+                    </ul>
+                </div>
+            </template>
+
+            <div x-show="current.slug === 'film'">
+                <h2>IMDB tables</h2>
+                <p>
+                    The IMDB import keeps its own browser:
+                    <a href="/movies.html">movies</a>, <a href="/tv.html">TV</a>, <a href="/short.html">shorts</a>,
+                    <a href="/video.html">videos</a>, <a href="/videogame.html">video games</a>,
+                    <a href="/persons.html">people</a>, <a href="/genres.html">genres</a> and
+                    <a href="/top-rated.html">top rated</a>.
+                </p>
+            </div>
+        </div>
+    </template>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function browseApp() {
+    return {
+        domains: [],
+        current: null,
+        highlights: [],
+        loading: true,
+        loadingHighlights: false,
+        error: null,
+
+        async init() {
+            try {
+                const data = await (await fetch('/timeline/domains')).json();
+                this.domains = data.domains || [];
+                this.error = data.error || null;
+            } catch (e) {
+                this.error = 'Could not load domains';
+            }
+            this.loading = false;
+            const slug = new URLSearchParams(window.location.search).get('domain');
+            if (slug) {
+                this.current = this.domains.find(d => d.slug === slug) || null;
+                if (!this.current) {
+                    this.error = `No domain called "${slug}"`;
+                } else {
+                    document.title = `${this.current.name} | Thyme`;
+                    this.loadHighlights();
+                }
+            }
+        },
+
+        year(y) { return y === null ? '' : (y <= 0 ? (1 - y) + ' BCE' : String(y)); },
+        centuryLabel(y) { return y <= 0 ? `${1 - y}–${-y} BCE` : `${y}s`; },
+        dates(e) {
+            const start = e.precision === 'year' ? this.year(e.startYear) : e.startDate;
+            if (!e.span) return start;
+            return `${start} – ${e.endYear === null ? 'present' : this.year(e.endYear)}`;
+        },
+
+        timelineUrl(d) {
+            const p = new URLSearchParams();
+            if (d.categories.length) p.set('category', d.categories.join(','));
+            if (d.kinds.length && !d.categories.length) p.set('kind', d.kinds.join(','));
+            const from = d.firstYear === null ? 1800 : Math.max(d.firstYear, -3000);
+            const to = d.lastYear === null ? 2030 : d.lastYear + 5;
+            p.set('from', from); p.set('to', to);
+            p.set('zoom', (1200 / (to - from)).toPrecision(2));
+            p.set('at', Math.round((from + to) / 2));
+            return '/timeline.html?' + p.toString();
+        },
+
+        async loadHighlights() {
+            const d = this.current;
+            this.loadingHighlights = true;
+            try {
+                let events = [];
+                if (d.categories.length) {
+                    const url = `/timeline/overview?from=-3000&to=2030&bucket=100&per=3&category=${encodeURIComponent(d.categories.join(','))}`;
+                    events = (await (await fetch(url)).json()).events || [];
+                }
+                // A domain whose categories are still stubs (Awards) is
+                // answered by its kinds instead.
+                if (events.length === 0 && d.kinds.length) {
+                    const url = `/timeline?from=-3000&to=2030&limit=60&kind=${encodeURIComponent(d.kinds.join(','))}`;
+                    events = (await (await fetch(url)).json()).events || [];
+                    events.forEach(e => { e.bucket = Math.floor(e.startYear / 100) * 100; });
+                }
+                const byBucket = new Map();
+                for (const e of events) {
+                    const b = e.bucket ?? Math.floor(e.startYear / 100) * 100;
+                    if (!byBucket.has(b)) byBucket.set(b, []);
+                    if (byBucket.get(b).length < 12) byBucket.get(b).push(e);
+                }
+                this.highlights = [...byBucket.entries()].sort((a, b) => b[0] - a[0])
+                    .map(([year, events]) => ({ year, events }));
+            } catch (e) {
+                this.error = 'Could not load highlights';
+            }
+            this.loadingHighlights = false;
+        }
+    }
+}
+</script>
+{% endblock %}

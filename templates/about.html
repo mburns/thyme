@@ -1,29 +1,41 @@
 {% extends "_base.html" %}
 
-{% block title %}About | Thyme IMDB{% endblock %}
+{% block title %}About | Thyme{% endblock %}
 
 {% block content %}
-<h1>About Thyme IMDB</h1>
+<h1>About Thyme</h1>
 <div style="max-width: 80ch;">
     <p>
-        This website is a demonstration project designed to showcase a modern, efficient web development stack.
-        It's an IMDB clone built on several key technologies working in concert:
+        Thyme is a timeline browser. It started as an IMDB clone and grew into a place to compare when
+        things happened across datasets: film and television, baseball and basketball, music releases,
+        and the lives of notable people from Wikidata, with more sources on the way (see
+        <a href="/sources.html">Sources</a>).
     </p>
+    <h2>How it is built</h2>
     <ul>
         <li>
-            <strong>TrailBase:</strong> At its core, TrailBase serves as the all-in-one backend. It provides a
-            fast, self-contained database server with a built-in REST API and a static file server. All data
-            is stored locally in a `traildepot` directory, making the entire application portable and easy to manage.
+            <strong>TrailBase</strong> serves the API and the static pages from one SQLite database in
+            <code>traildepot/</code>. The custom endpoints (<code>/search</code>, <code>/timeline…</code>)
+            are a WASM component compiled from TypeScript in <code>wasm/src/</code>.
         </li>
         <li>
-            <strong>Jinja2 &amp; Static Site Generation:</strong> The HTML pages are built from Jinja2 templates. A Python
-            script (`build.py`) renders these templates into a static "shell" of a site. This means the initial
-            page load is extremely fast, delivering a complete HTML structure that Alpine.js then hydrates with
-            dynamic data from the backend.
+            <strong>One events table.</strong> Every source becomes rows in <code>entities</code> and
+            <code>events</code> (instants and spans, with a year, a precision and a rank). Precomputed
+            level-of-detail tables pick the top events per year, decade and century so a wide view costs
+            the same whether the database holds sixty thousand events or sixty million.
+        </li>
+        <li>
+            <strong>Ingest.</strong> <code>scripts/ingest_events.py</code> syncs each source from the files
+            under <code>data/</code>, fingerprinting them so unchanged sources are skipped, then links the
+            same entity across sources through Wikidata ids, external identifiers and names with dates.
+        </li>
+        <li>
+            <strong>Pages</strong> are static HTML rendered from <code>templates/</code>, hydrated with
+            Alpine.js; the timeline itself is a small TypeScript app in <code>web/</code>.
         </li>
     </ul>
     <p>
-        The data is a subset of the public IMDB dataset, imported directly into the TrailBase SQLite database using a custom Python script (`import_imdb_direct.py`).
+        Source code: <a href="https://github.com/mburns/thyme">github.com/mburns/thyme</a>.
     </p>
 </div>
-{% endblock %} 
+{% endblock %}

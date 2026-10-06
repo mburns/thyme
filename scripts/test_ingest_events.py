@@ -112,6 +112,49 @@ b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d,The Beatles,d3d3d3d3-0000-0000-0000-0000000
 b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d,The Beatles,e4e4e4e4-0000-0000-0000-000000000004,From the Future,3036,1,1,Album,
 89ad4ac3-39f7-470e-963a-56509c546377,Various Artists,f5f5f5f5-0000-0000-0000-000000000005,Now That's What I Call Music,1983,11,28,Album,GB
 """
+BX_BOOKS = """\
+ISBN,Book-Title,Book-Author,Year-Of-Publication,Publisher,Image-URL-S,Image-URL-M,Image-URL-L
+0195153448,Classical Mythology,Mark P. O. Morford,2002,Oxford University Press,,,
+0002005018,Clara Callan,Richard Bruce Wright,2001,HarperFlamingo Canada,,,
+0000000000,Undated Book,Nobody,0,Nowhere Press,,,
+"""
+STEAM = """\
+appid,name,release_date,short_description,developers,publishers,genres,metacritic_score,estimated_owners,positive,negative
+730,Counter-Strike 2,2012-08-21,A free upgrade to CS:GO.,Valve,Valve,"Action,Free To Play",83,100000000 - 200000000,7000000,1000000
+999999,Unreleased,,Nothing yet.,Nobody,Nobody,,0,0 - 0,0,0
+"""
+PAINTERS = """\
+artist_id,full_name,first_name,middle_names,last_name,nationality,style,birth,death
+500,Pierre-Auguste Renoir,Pierre,Auguste,Renoir,French,Impressionist,1841,1919
+"""
+CRICKET_TESTS = """\
+date,type,team1,team2
+1877-03-15,Test,Australia,England
+"""
+CRICKET_ODIS = """\
+date,type,team1,team2
+2006-01-03,ODI,New Zealand,Sri Lanka
+"""
+CRICKET_T20I = """\
+date,type,team1,team2
+2007-09-11,T20I,South Africa,West Indies
+"""
+MLS = """\
+﻿id,home,away,date,year,time (utc),attendance,venue,league,part_of_competition,game_status,shootout,home_score,away_score
+,New England,San Jose,7/31/1996,1996,,"12,871",Foxboro Stadium,1996 MLS,Regular Season,FT,,2,0
+"""
+WIKIPEDIA_LIST = {
+    "title": "Bibliography of Montana history",
+    "pageid": 123,
+    "revid": 456,
+    "url": "https://en.wikipedia.org/wiki/Bibliography_of_Montana_history",
+    "wikitext": (
+        "* {{cite book |last=Malone |first=Michael P. |title=Montana: A History of Two "
+        "Centuries |publisher=University of Washington Press |year=1991}}\n"
+        "* Toole, K. Ross. ''Montana: An Uncommon Land''. Norman, 1959.\n"
+        "* [[Lewis and Clark Expedition|The expedition]] reaches the Three Forks, 1805.\n"
+    ),
+}
 
 
 def write(path: Path, text: str) -> None:
@@ -152,6 +195,19 @@ class IngestTest(unittest.TestCase):
         write(nba / "game.csv", NBA_GAMES)
         write(nba / "team_history.csv", NBA_TEAM_HISTORY)
         write(self.data / "music" / "official_releases.csv", MUSICBRAINZ)
+        write(self.data / "books" / "BX-Books.csv", BX_BOOKS)
+        write(self.data / "steam" / "games_march2025_cleaned.csv", STEAM)
+        write(self.data / "art" / "artist.csv", PAINTERS)
+        cricket = self.data / "sports" / "cricket"
+        write(cricket / "tests.csv", CRICKET_TESTS)
+        write(cricket / "odis.csv", CRICKET_ODIS)
+        write(cricket / "t20i.csv", CRICKET_T20I)
+        write(self.data / "sports" / "mls" / "matches.csv", MLS)
+        lists = self.data / "wikipedia" / "lists"
+        lists.mkdir(parents=True)
+        (lists / "bibliography_of_montana_history.json").write_text(
+            json.dumps(WIKIPEDIA_LIST), encoding="utf-8"
+        )
         wikidata_extract.run(str(WIKIDATA_DUMP), self.data / "wikidata", None, 10**6)
         self.conn = make_db(root / "main.db")
         self.conn.executescript(
@@ -235,6 +291,15 @@ class IngestTest(unittest.TestCase):
             {"life": 2, "career": 2, "draft": 1, "game": 2, "run": 2},
         )
         self.assertEqual(self.events_for("musicbrainz"), {"release": 3})
+        # Year 0 is "unknown" in Book-Crossing and stays out.
+        self.assertEqual(self.events_for("bx_books"), {"publication": 2})
+        self.assertEqual(self.events_for("steam"), {"release": 1})
+        self.assertEqual(self.events_for("paintings"), {"life": 1})
+        self.assertEqual(self.events_for("cricket"), {"game": 3})
+        self.assertEqual(self.events_for("mls"), {"game": 1})
+        self.assertEqual(
+            self.events_for("wikipedia_lists"), {"publication": 2, "listed": 1}
+        )
 
     def test_dates_and_precision(self) -> None:
         self.sync_all()

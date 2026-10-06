@@ -113,7 +113,10 @@ describe("buildWindowQuery", () => {
     });
     expect(sql).toContain("(events.start_year, events.id) > (?, ?)");
     expect(sql).toContain("events.category IN (?, ?)");
-    expect(sql).toContain("sources.slug IN (?)");
+    // Source membership is checked on the events row, not after the join.
+    expect(sql).toContain(
+      "events.source_id IN (SELECT id FROM sources WHERE slug IN (?))",
+    );
     expect(sql).toContain("events.kind IN (?)");
     expect(sql).toContain("events.span = ?");
     // A name filter makes the FTS hits drive the join.
@@ -209,9 +212,27 @@ describe("buildOverviewQuery", () => {
     const { sql, params } = buildOverviewQuery(1955, 1980, 10, 5, ["film"], []);
     expect(sql).toContain("FROM event_lod");
     expect(sql).toContain("event_lod.bucket_size = ?");
-    expect(sql).toContain("event_lod.pos <= ?");
-    expect(sql).toContain("ORDER BY event_lod.bucket, events.rank DESC");
-    expect(params).toEqual([10, 1950, 1980, 5, "film"]);
+    // The per-bucket cut uses the rank stored on the LOD rows, before the
+    // join to events.
+    expect(sql).toContain("PARTITION BY event_lod.bucket");
+    expect(sql).toContain("WHERE n <= ?) top");
+    expect(sql).toContain("ORDER BY top.bucket, events.rank DESC");
+    expect(params).toEqual([10, 1950, 1980, "film", 5]);
+  });
+
+  it("filters sources on the LOD row rather than after the join", () => {
+    const { sql, params } = buildOverviewQuery(
+      1900,
+      1999,
+      10,
+      8,
+      ["film", "actor"],
+      ["imdb"],
+    );
+    expect(sql).toContain(
+      "event_lod.source_id IN (SELECT id FROM sources WHERE slug IN (?))",
+    );
+    expect(params).toEqual([10, 1900, 1999, "film", "actor", "imdb", 8]);
   });
 
   it("floors negative years and uses the '*' rows without a category", () => {

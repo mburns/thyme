@@ -1,70 +1,67 @@
 {% extends "_base.html" %}
 
-{% block title %}Search - Thyme IMDB{% endblock %}
+{% block title %}Search | Thyme{% endblock %}
 
 {% block content %}
 <div class="search-container" x-data="searchApp()">
-    <h2>Search IMDB Data</h2>
+    <h1>Search</h1>
+    <p>People, teams, artists and titles from every source, plus the IMDB tables.</p>
 
-    <div class="search-form">
-        <form @submit.prevent="performSearch">
-            <div class="search-input-group">
-                <input
-                    type="text"
-                    x-model="query"
-                    placeholder="Search for movies, TV shows, people, genres, years..."
-                    class="search-input"
-                    @input="debounceSearch"
-                >
-                <button type="submit" class="search-button">Search</button>
-            </div>
-
-            <div class="search-filters">
-                <label>
-                    <input type="checkbox" x-model="filters.titles" @change="performSearch">
-                    Titles
-                </label>
-                <label>
-                    <input type="checkbox" x-model="filters.persons" @change="performSearch">
-                    People
-                </label>
-                <label>
-                    <input type="checkbox" x-model="filters.years" @change="performSearch">
-                    Years
-                </label>
-            </div>
-        </form>
-    </div>
+    <form class="search-form" @submit.prevent="performSearch">
+        <div class="search-input-group">
+            <input
+                type="search"
+                x-model="query"
+                placeholder="Try “Beatles”, “Yankees”, “Marie Curie”, “Metropolis”"
+                class="search-input"
+                autofocus
+                @input="debounceSearch"
+            >
+            <button type="submit" class="button">Search</button>
+        </div>
+        <div class="search-filters">
+            <label><input type="checkbox" x-model="filters.entities" @change="performSearch"> Timeline entities</label>
+            <label><input type="checkbox" x-model="filters.titles" @change="performSearch"> IMDB titles</label>
+            <label><input type="checkbox" x-model="filters.persons" @change="performSearch"> IMDB people</label>
+            <label><input type="checkbox" x-model="filters.years" @change="performSearch"> Match title years</label>
+        </div>
+    </form>
 
     <div class="search-results" x-show="results.length > 0">
-        <h3>Search Results (<span x-text="results.length"></span>)</h3>
+        <h2>
+            Results
+            <small x-text="`${totalResults.toLocaleString()}${entitiesCapped ? '+' : ''}`"></small>
+        </h2>
 
         <div class="results-container">
-            <template x-for="result in results" :key="result.id + result.type">
+            <template x-for="result in results" :key="result.type + result.id">
                 <div class="result-item" :class="'result-' + result.type">
                     <div class="result-header">
-                        <h4>
-                            <a :href="getResultUrl(result)" x-text="result.primaryTitle || result.primaryName"></a>
-                        </h4>
-                        <span class="result-type" x-text="result.type === 'title' ? 'Title' : 'Person'"></span>
+                        <h3>
+                            <a :href="getResultUrl(result)" x-html="result.highlight || result.primaryTitle || result.primaryName || result.name"></a>
+                        </h3>
+                        <span class="chip" x-text="resultType(result)"></span>
                     </div>
-
                     <div class="result-details">
+                        <template x-if="result.type === 'entity'">
+                            <div>
+                                <span x-show="result.startYear !== null" x-text="years(result)"></span>
+                                <span x-show="result.label && result.label !== result.name" x-text="result.label"></span>
+                                <span x-show="result.category" x-text="result.category"></span>
+                                <a :href="timelineUrl(result)">on the timeline →</a>
+                            </div>
+                        </template>
                         <template x-if="result.type === 'title'">
-                            <div class="title-details">
+                            <div>
                                 <span x-show="result.titleType" x-text="result.titleType"></span>
-                                <span x-show="result.startYear" x-text="'(' + result.startYear + ')'"></span>
-                                <span x-show="result.endYear && result.endYear !== result.startYear" x-text="'-' + result.endYear"></span>
+                                <span x-show="result.startYear" x-text="'(' + result.startYear + (result.endYear && result.endYear !== result.startYear ? '–' + result.endYear : '') + ')'"></span>
                                 <span x-show="result.genres" x-text="result.genres"></span>
                                 <span x-show="result.averageRating" x-text="'★ ' + result.averageRating"></span>
                             </div>
                         </template>
-
                         <template x-if="result.type === 'person'">
-                            <div class="person-details">
-                                <span x-show="result.birthYear" x-text="result.birthYear + '-'"></span>
-                                <span x-show="result.deathYear" x-text="result.deathYear"></span>
-                                <span x-show="!result.deathYear && result.birthYear" x-text="'present'"></span>
+                            <div>
+                                <span x-show="result.birthYear" x-text="result.birthYear + ' – ' + (result.deathYear || 'present')"></span>
                                 <span x-show="result.primaryProfession" x-text="result.primaryProfession"></span>
                             </div>
                         </template>
@@ -74,233 +71,44 @@
         </div>
 
         <div class="search-pagination" x-show="totalPages > 1">
-            <button @click="prevPage" :disabled="currentPage <= 1">Previous</button>
+            <button type="button" class="button secondary" @click="prevPage" :disabled="currentPage <= 1">Previous</button>
             <span x-text="'Page ' + currentPage + ' of ' + totalPages"></span>
-            <button @click="nextPage" :disabled="currentPage >= totalPages">Next</button>
+            <button type="button" class="button secondary" @click="nextPage" :disabled="currentPage >= totalPages">Next</button>
         </div>
     </div>
 
-    <div class="no-results" x-show="searched && results.length === 0">
-        <p>No results found for "<span x-text="query"></span>"</p>
-        <p>Try different keywords or check your spelling.</p>
-    </div>
-
-    <div class="search-tips" x-show="!searched">
-        <h3>Search Tips</h3>
-        <ul>
-            <li>Search for movie titles, actor names, directors, or genres</li>
-            <li>Use quotes for exact phrases: "The Godfather"</li>
-            <li>Search by year: 1999, 2020s, etc.</li>
-            <li>Combine terms: "action 2023" or "Tom Hanks drama"</li>
-            <li>Use filters to narrow down results</li>
-        </ul>
+    <div class="no-results" x-show="searched && !loading && results.length === 0">
+        <p>Nothing found for “<span x-text="query"></span>”.</p>
+        <p>Entity names need at least three letters per word; title searches match word prefixes.</p>
     </div>
 </div>
-
-<style>
-.search-container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-    color: #333; /* Darker text for better contrast */
-}
-
-.search-form {
-    margin-bottom: 30px;
-}
-
-.search-input-group {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 15px;
-}
-
-.search-input {
-    flex: 1;
-    padding: 12px;
-    border: 2px solid #ddd;
-    border-radius: 6px;
-    font-size: 16px;
-    color: #333; /* Darker text in input */
-}
-
-.search-button {
-    padding: 12px 24px;
-    background: #007bff;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 16px;
-}
-
-.search-button:hover {
-    background: #0056b3;
-}
-
-.search-filters {
-    display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
-}
-
-.search-filters label {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    cursor: pointer;
-    color: #333; /* Darker text for labels */
-}
-
-.results-container {
-    display: flex;
-    flex-direction: column;
-    gap: 15px;
-}
-
-.result-item {
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    padding: 15px;
-    background: white;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.result-title {
-    border-left: 4px solid #007bff;
-}
-
-.result-person {
-    border-left: 4px solid #28a745;
-}
-
-.result-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.result-header h4 {
-    margin: 0;
-    flex: 1;
-    color: #333; /* Darker text for headers */
-}
-
-.result-header h4 a {
-    color: #007bff;
-    text-decoration: none;
-    font-weight: 600;
-}
-
-.result-header h4 a:hover {
-    text-decoration: underline;
-    color: #0056b3;
-}
-
-.result-type {
-    background: #e9ecef;
-    color: #495057; /* Darker text for type badges */
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.result-details {
-    color: #495057; /* Much darker text for better readability */
-    font-size: 14px;
-    line-height: 1.4;
-}
-
-.result-details span {
-    margin-right: 10px;
-    display: inline-block;
-}
-
-.search-pagination {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 15px;
-    margin-top: 20px;
-    padding: 15px;
-}
-
-.search-pagination button {
-    padding: 8px 16px;
-    background: #f8f9fa;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    cursor: pointer;
-    color: #333; /* Darker text for buttons */
-}
-
-.search-pagination button:hover:not(:disabled) {
-    background: #e9ecef;
-}
-
-.search-pagination button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-
-.search-pagination span {
-    color: #333; /* Darker text for pagination info */
-}
-
-.no-results {
-    text-align: center;
-    padding: 40px;
-    color: #495057; /* Darker text for no results */
-}
-
-.search-tips {
-    background: #f8f9fa;
-    padding: 20px;
-    border-radius: 8px;
-    margin-top: 30px;
-    border: 1px solid #e9ecef;
-}
-
-.search-tips h3 {
-    margin-top: 0;
-    color: #333; /* Darker text for tips header */
-}
-
-.search-tips ul {
-    margin: 0;
-    padding-left: 20px;
-    color: #495057; /* Darker text for tips list */
-}
-
-.search-tips li {
-    margin-bottom: 8px;
-    line-height: 1.4;
-}
-</style>
 {% endblock %}
 
 {% block scripts %}
 <script>
 function searchApp() {
     return {
-        query: '',
+        query: new URLSearchParams(window.location.search).get('q') || '',
         results: [],
         searched: false,
         loading: false,
         currentPage: 1,
         totalPages: 1,
-        filters: {
-            titles: true,
-            persons: true,
-            years: true
-        },
+        totalResults: 0,
+        entitiesCapped: false,
+        filters: { entities: true, titles: true, persons: true, years: true },
         debounceTimer: null,
+
+        init() {
+            if (this.query) {
+                this.performSearch();
+            }
+        },
 
         debounceSearch() {
             clearTimeout(this.debounceTimer);
             this.debounceTimer = setTimeout(() => {
+                this.currentPage = 1;
                 if (this.query.length >= 2) {
                     this.performSearch();
                 }
@@ -313,49 +121,48 @@ function searchApp() {
                 this.searched = false;
                 return;
             }
-
             this.loading = true;
             this.searched = true;
-
+            const f = this.filters;
+            const url = `/search?q=${encodeURIComponent(this.query)}&page=${this.currentPage}` +
+                `&entities=${f.entities}&titles=${f.titles}&persons=${f.persons}&years=${f.years}`;
             try {
-                const response = await fetch(`/search?q=${encodeURIComponent(this.query)}&page=${this.currentPage}&titles=${this.filters.titles}&persons=${this.filters.persons}&years=${this.filters.years}`);
-
-                if (response.ok) {
-                    const data = await response.json();
-                    this.results = data.results || [];
-                    this.totalPages = data.totalPages || 1;
-                } else {
-                    console.error('Search failed:', response.status);
-                    this.results = [];
-                }
+                const response = await fetch(url);
+                const data = response.ok ? await response.json() : {};
+                this.results = data.results || [];
+                this.totalPages = data.totalPages || 1;
+                this.totalResults = data.totalResults || 0;
+                this.entitiesCapped = !!data.entitiesCapped;
+                history.replaceState(null, '', `?q=${encodeURIComponent(this.query)}`);
             } catch (error) {
                 console.error('Search error:', error);
                 this.results = [];
             }
-
             this.loading = false;
         },
 
-        getResultUrl(result) {
-            if (result.type === 'title') {
-                return `/title.html#${result.id}`;
-            } else {
-                return `/person.html#${result.id}`;
-            }
+        year(y) { return y <= 0 ? (1 - y) + ' BCE' : String(y); },
+        years(r) {
+            const end = r.endYear === null ? (r.label && r.startYear ? '' : 'present') : this.year(r.endYear);
+            return end ? `${this.year(r.startYear)} – ${end}` : this.year(r.startYear);
         },
-
+        resultType(r) {
+            if (r.type === 'entity') return `${r.kind} · ${r.source}`;
+            return r.type === 'title' ? 'IMDB title' : 'IMDB person';
+        },
+        getResultUrl(r) {
+            if (r.type === 'entity') return `/entity.html#${r.id}`;
+            return r.type === 'title' ? `/title.html#${r.id}` : `/person.html#${r.id}`;
+        },
+        timelineUrl(r) {
+            const at = r.startYear === null ? 1960 : r.startYear;
+            return `/timeline.html?q=${encodeURIComponent(r.name)}&at=${at}&zoom=12`;
+        },
         prevPage() {
-            if (this.currentPage > 1) {
-                this.currentPage--;
-                this.performSearch();
-            }
+            if (this.currentPage > 1) { this.currentPage--; this.performSearch(); }
         },
-
         nextPage() {
-            if (this.currentPage < this.totalPages) {
-                this.currentPage++;
-                this.performSearch();
-            }
+            if (this.currentPage < this.totalPages) { this.currentPage++; this.performSearch(); }
         }
     }
 }

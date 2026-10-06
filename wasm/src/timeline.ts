@@ -30,7 +30,10 @@ import { num, type Params, str } from "./values";
 ///   per = events per bucket and category (max 20). Served from the
 ///   precomputed `event_lod` table, so cost does not grow with the data.
 ///
-/// GET /timeline/density        counts per year bucket from `event_density`
+/// GET /timeline/density        counts per year bucket from `event_density`;
+///                              `by=source` groups by source instead of category
+/// GET /timeline/sources        every source with its event count, year range,
+///                              top categories and last successful sync
 /// GET /timeline/participants   who took part in an event (`event=<id>`)
 /// GET /timeline/links          the same entity across sources (`entity=<id>`)
 
@@ -188,7 +191,12 @@ function buildFilters(q: TimelineQuery): {
     params.push(...q.categories);
   }
   if (q.sources.length > 0) {
-    where.push(`sources.slug IN (${placeholders(q.sources.length)})`);
+    // Checked on the events row itself, before the joins; testing
+    // sources.slug after the join made a sparse source 100x slower (3 s for
+    // ten NBA years under 300k music events).
+    where.push(
+      `events.source_id IN (SELECT id FROM sources WHERE slug IN (${placeholders(q.sources.length)}))`,
+    );
     params.push(...q.sources);
   }
   if (q.kinds.length > 0) {
@@ -254,7 +262,10 @@ function floorBucket(year: number, size: number): number {
 /// category filter this walks events_by_category; without, events_by_start.
 /// Either way SQLite stops after `limit + 1` rows; the extra row tells us
 /// whether there is a next page.
-export function buildWindowQuery(q: TimelineQuery): {
+export function buildWindowQuery(
+  q: TimelineQuery,
+  bySource = false,
+): {
   sql: string;
   params: unknown[];
 } {
@@ -264,6 +275,22 @@ export function buildWindowQuery(q: TimelineQuery): {
   if (q.cursor !== null) {
     bounds.push("(events.start_year, events.id) > (?, ?)");
     boundParams.push(q.cursor.startYear, q.cursor.id);
+  }
+  if (bySource && q.match === null && q.sources.length > 0) {
+    // A sparse source inside a dense decade (160 IMDB events among 500k
+    // music releases): walking events_by_start and rejecting almost every
+    // row took 16 s. Page on the source index first, sort the bare ids,
+    // and join only the page.
+    const sql = `
+    SELECT ${EVENT_COLUMNS}
+      FROM (SELECT events.id
+              FROM events INDEXED BY events_by_source_year
+             WHERE ${[...bounds, ...where].join("\n               AND ")}
+             ORDER BY events.start_year, events.id
+             LIMIT ?) page
+      CROSS JOIN events ON events.id = page.id${EVENT_JOINS}
+     ORDER BY events.start_year, events.id`;
+    return { sql, params: [...boundParams, ...params, q.limit + 1] };
   }
   const sql = `
     SELECT ${EVENT_COLUMNS}
@@ -373,7 +400,10 @@ export function buildCountQuery(
   return { sql, params: [q.from, q.to, ...params, cap] };
 }
 
-/// Top events per bucket and category from the precomputed LOD table.
+/// Top `per` events per bucket from the precomputed LOD table, across the
+/// requested categories and sources. The LOD rows carry the rank, so the
+/// cut happens before `events` is touched: a 24-category domain over 50
+/// buckets reads 3000 small index entries and joins only the 400 winners.
 export function buildOverviewQuery(
   from: number,
   to: number,
@@ -385,9 +415,8 @@ export function buildOverviewQuery(
   const where = [
     "event_lod.bucket_size = ?",
     "event_lod.bucket BETWEEN ? AND ?",
-    "event_lod.pos <= ?",
   ];
-  const params: unknown[] = [bucket, floorBucket(from, bucket), to, per];
+  const params: unknown[] = [bucket, floorBucket(from, bucket), to];
   if (categories.length > 0) {
     where.push(`event_lod.category IN (${placeholders(categories.length)})`);
     params.push(...categories);
@@ -396,15 +425,24 @@ export function buildOverviewQuery(
     where.push("event_lod.category = '*'");
   }
   if (sources.length > 0) {
-    where.push(`sources.slug IN (${placeholders(sources.length)})`);
+    where.push(
+      `event_lod.source_id IN (SELECT id FROM sources WHERE slug IN (${placeholders(sources.length)}))`,
+    );
     params.push(...sources);
   }
+  params.push(per);
   const sql = `
-    SELECT ${EVENT_COLUMNS}, event_lod.bucket
-      FROM event_lod
-      CROSS JOIN events ON events.id = event_lod.event_id${EVENT_JOINS}
-     WHERE ${where.join("\n       AND ")}
-     ORDER BY event_lod.bucket, events.rank DESC, events.id`;
+    SELECT ${EVENT_COLUMNS}, top.bucket
+      FROM (SELECT event_id, bucket
+              FROM (SELECT event_lod.event_id, event_lod.bucket,
+                           row_number() OVER (
+                             PARTITION BY event_lod.bucket
+                             ORDER BY event_lod.rank DESC, event_lod.event_id) AS n
+                      FROM event_lod
+                     WHERE ${where.join("\n                       AND ")})
+             WHERE n <= ?) top
+      CROSS JOIN events ON events.id = top.event_id${EVENT_JOINS}
+     ORDER BY top.bucket, events.rank DESC, events.id`;
   return { sql, params };
 }
 
@@ -418,6 +456,7 @@ export function buildDensityQuery(
   bucket: number,
   categories: string[],
   sources: string[],
+  by: "category" | "source" = "category",
 ): { sql: string; params: unknown[] } {
   const where: string[] = ["event_density.year BETWEEN ? AND ?"];
   const params: unknown[] = [bucket, bucket, bucket, from, to];
@@ -431,9 +470,12 @@ export function buildDensityQuery(
     where.push(`sources.slug IN (${placeholders(sources.length)})`);
     params.push(...sources);
   }
+  // Thousands of Wikidata occupations make per-category rows a big
+  // response for a wide window; grouping by source keeps a histogram small.
+  const group = by === "source" ? "sources.slug" : "event_density.category";
   const sql = `
     SELECT event_density.year - (((event_density.year % ?) + ?) % ?) AS bucket,
-           event_density.category, sum(event_density.count)
+           ${group}, sum(event_density.count)
       FROM event_density
       JOIN sources ON sources.id = event_density.source_id
      WHERE ${where.join(" AND ")}
@@ -441,6 +483,33 @@ export function buildDensityQuery(
      ORDER BY 1, 2`;
   return { sql, params };
 }
+
+/// One row per source with totals the UI can show without touching the
+/// 6M-row events table: counts and year range come from `event_density`,
+/// entity counts from the last successful sync.
+export const SOURCES_SQL = `
+    SELECT sources.id, sources.slug, sources.name, sources.kind, sources.homepage,
+           sources.license, sources.description,
+           (SELECT sum(count) FROM event_density d WHERE d.source_id = sources.id),
+           (SELECT min(year) FROM event_density d WHERE d.source_id = sources.id),
+           (SELECT max(year) FROM event_density d WHERE d.source_id = sources.id),
+           (SELECT count(DISTINCT category) FROM event_density d WHERE d.source_id = sources.id),
+           (SELECT finished FROM source_syncs s WHERE s.source_id = sources.id AND s.status = 'ok'
+             ORDER BY s.id DESC LIMIT 1),
+           (SELECT entities_written FROM source_syncs s WHERE s.source_id = sources.id AND s.status = 'ok'
+             ORDER BY s.id DESC LIMIT 1),
+           (SELECT version FROM source_syncs s WHERE s.source_id = sources.id AND s.status = 'ok'
+             ORDER BY s.id DESC LIMIT 1)
+      FROM sources
+     ORDER BY 8 DESC NULLS LAST, sources.name`;
+
+export const TOP_CATEGORIES_SQL = `
+    SELECT category, sum(count) AS n
+      FROM event_density
+     WHERE source_id = ?
+     GROUP BY category
+     ORDER BY n DESC
+     LIMIT ?`;
 
 function parseDetail(v: unknown): Record<string, unknown> | null {
   if (typeof v !== "string") {
@@ -547,10 +616,34 @@ function readQuery(req: HttpRequest): TimelineQuery {
   };
 }
 
+/// Above this many events in the window, the chosen sources are dense
+/// enough that the start-year index (no sort) beats paging on the source
+/// index (a sort of every matching id).
+const SOURCE_INDEX_MAX_ROWS = 150_000;
+
+/// Whether the window query should page on the source index: only when a
+/// source filter is set without a category filter (events_by_category
+/// already serves that) and `event_density` says the sources are sparse
+/// in the window.
+export async function sparseSources(q: TimelineQuery): Promise<boolean> {
+  if (q.sources.length === 0 || q.categories.length > 0 || q.match !== null) {
+    return false;
+  }
+  const rows = await query(
+    `SELECT sum(event_density.count)
+       FROM event_density
+       JOIN sources ON sources.id = event_density.source_id
+      WHERE sources.slug IN (${placeholders(q.sources.length)})
+        AND event_density.year BETWEEN ? AND ?`,
+    [...q.sources, q.from, q.to] as Params,
+  );
+  return (num(rows[0]?.[0]) ?? 0) <= SOURCE_INDEX_MAX_ROWS;
+}
+
 export async function timeline(req: HttpRequest): Promise<object> {
   const q = readQuery(req);
   try {
-    const page = buildWindowQuery(q);
+    const page = buildWindowQuery(q, await sparseSources(q));
     const count = buildCountQuery(q);
     const active = buildActiveQuery(q);
     const [rows, countRows, activeRows] = await Promise.all([
@@ -641,6 +734,7 @@ export async function density(req: HttpRequest): Promise<object> {
   const bucket = parseBounded(req.getQueryParam("bucket"), 10, 1, 1000);
   const categories = parseList(req.getQueryParam("category"));
   const sources = parseList(req.getQueryParam("source"));
+  const by = req.getQueryParam("by") === "source" ? "source" : "category";
 
   try {
     const { sql, params } = buildDensityQuery(
@@ -649,21 +743,75 @@ export async function density(req: HttpRequest): Promise<object> {
       bucket,
       categories,
       sources,
+      by,
     );
     const rows = await query(sql, params as Params);
     return {
       from,
       to,
       bucket,
+      by,
       buckets: rows.map((r) => ({
         year: num(r[0]) ?? 0,
-        category: str(r[1]) ?? "",
+        [by]: str(r[1]) ?? "",
         count: num(r[2]) ?? 0,
       })),
     };
   } catch (error) {
     console.error("[TIMELINE] density query failed:", error);
-    return { from, to, bucket, buckets: [], error: "Density query failed" };
+    return { from, to, bucket, by, buckets: [], error: "Density query failed" };
+  }
+}
+
+export interface SourceSummary {
+  slug: string;
+  name: string;
+  kind: string;
+  homepage: string | null;
+  license: string | null;
+  description: string | null;
+  events: number;
+  entities: number | null;
+  firstYear: number | null;
+  lastYear: number | null;
+  categoryCount: number;
+  topCategories: { category: string; events: number }[];
+  lastSync: { finished: number | null; version: string | null } | null;
+}
+
+export async function sources(req: HttpRequest): Promise<object> {
+  const top = parseBounded(req.getQueryParam("top"), 8, 0, MAX_LIST);
+  try {
+    const rows = await query(SOURCES_SQL, []);
+    const out: SourceSummary[] = [];
+    for (const r of rows) {
+      const id = num(r[0]) ?? 0;
+      const catRows =
+        top > 0 ? await query(TOP_CATEGORIES_SQL, [id, top] as Params) : [];
+      const finished = num(r[11]);
+      out.push({
+        slug: str(r[1]) ?? "",
+        name: str(r[2]) ?? "",
+        kind: str(r[3]) ?? "",
+        homepage: str(r[4]),
+        license: str(r[5]),
+        description: str(r[6]),
+        events: num(r[7]) ?? 0,
+        entities: num(r[12]),
+        firstYear: num(r[8]),
+        lastYear: num(r[9]),
+        categoryCount: num(r[10]) ?? 0,
+        topCategories: catRows.map((c) => ({
+          category: str(c[0]) ?? "",
+          events: num(c[1]) ?? 0,
+        })),
+        lastSync: finished === null ? null : { finished, version: str(r[13]) },
+      });
+    }
+    return { sources: out };
+  } catch (error) {
+    console.error("[TIMELINE] sources query failed:", error);
+    return { sources: [], error: "Sources query failed" };
   }
 }
 
@@ -752,6 +900,9 @@ export const timelineHandlers = [
   ),
   HttpHandler.get("/timeline/density", async (req) =>
     HttpResponse.json(await density(req)),
+  ),
+  HttpHandler.get("/timeline/sources", async (req) =>
+    HttpResponse.json(await sources(req)),
   ),
   HttpHandler.get("/timeline/participants", async (req) =>
     HttpResponse.json(await participants(req)),

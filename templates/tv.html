@@ -1,6 +1,6 @@
 {% extends "_base.html" %}
 
-{% block title %}TV | Thyme IMDB{% endblock %}
+{% block title %}TV | Thyme{% endblock %}
 
 {% block content %}
 <div x-data="{
@@ -29,7 +29,7 @@
             this.loadedCount = 0;
         }
         this.isLoading = true;
-        let url = `/api/records/v1/v_title_details?filter[titleType][$eq]=${this.selectedType}`;
+        let url = `/api/records/v1/v_title_details?filter[titleType][$eq]=${this.selectedType}&order=-numVotes&count=true`;
         if (this.cursor) {
             url += `&cursor=${this.cursor}`;
         }
@@ -72,7 +72,15 @@
 
     <div class="content" style="margin-top: 20px;">
         <p x-show="isLoading && isInitialLoad">Loading...</p>
-        <template x-if="!isInitialLoad">
+        <div class="empty" x-show="!isInitialLoad && records.length === 0 && !isLoading">
+            <p>No titles of this type in the database.</p>
+            <p>
+                The IMDB sample import (<code>make test-import</code>) only has movies and shorts. Import the full
+                datasets with <code>make import-data</code> to fill this page, or browse
+                <a href="/timeline.html?source=imdb&zoom=24&at=1990">IMDB on the timeline</a>.
+            </p>
+        </div>
+        <template x-if="!isInitialLoad && records.length > 0">
             <table>
                 <thead>
                     <tr>

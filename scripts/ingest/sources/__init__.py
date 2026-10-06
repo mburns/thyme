@@ -14,6 +14,7 @@ from ingest.sources.lahman import LahmanSource
 from ingest.sources.olympics import OlympicsSource
 from ingest.sources.wikidata import WikidataSource
 from ingest.sources.wikidata_age import WikidataAgeSource
+from ingest.sources.wikipedia_lists import WikipediaListsSource
 
 SOURCES: dict[str, Source] = {
     s.slug: s
@@ -23,6 +24,7 @@ SOURCES: dict[str, Source] = {
         OlympicsSource(),
         WikidataAgeSource(),
         WikidataSource(),
+        WikipediaListsSource(),
         *load_specs(),
     )
 }

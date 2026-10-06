@@ -122,6 +122,9 @@ class WikidataSource(Source):
             ):
                 for rel in item.get(key, ()):
                     wanted.add(rel["id"])
+            if item["kind"] == "dated":
+                # A stub's category is the label of its first class.
+                wanted.update(item.get("classes", ())[:1])
         wanted -= selected
         labels: dict[str, dict[str, Any]] = {}
         path = self._labels_path(ctx)
@@ -178,6 +181,52 @@ class WikidataSource(Source):
                 yield from self._country_events(item)
             elif kind == "award":
                 yield from self._award_events(item)
+            elif kind == "dated":
+                yield from self._dated_events(item, labels)
+
+    def _dated_events(
+        self, item: dict[str, Any], labels: dict[str, dict[str, Any]]
+    ) -> Iterable[Event]:
+        """A stub for an item of any class that has a date (--all-dated).
+
+        A start/end or inception/dissolution pair is a span; a single
+        point, publication or inception date is an instant. The category
+        is the item's first class ("book", "earthquake", "treaty") so the
+        stub lands in the right domain once that class is mapped.
+        """
+        start = to_date(item.get("start")) or to_date(item.get("inception"))
+        end = to_date(item.get("end")) or to_date(item.get("dissolved"))
+        point = to_date(item.get("point")) or to_date(item.get("published"))
+        if start is None and point is None:
+            return
+        first = start or point
+        if first is None:
+            return
+        span = start is not None and end is not None
+        first_class = (item.get("classes") or [None])[0]
+        category = (
+            labels[first_class]["label"].lower() if first_class in labels else "dated"
+        )
+        yield Event(
+            external_id=f"{item['id']}:dated",
+            entity_kind="dated",
+            entity_external_id=item["id"],
+            kind="published" if start is None and item.get("published") else "dated",
+            label=item["label"],
+            start_date=first[0],
+            end_date=end[0] if span and end else None,
+            precision=first[1],
+            start_year=first[2],
+            end_year=end[2] if span and end else None,
+            span=span,
+            certainty="circa" if first[3] else "exact",
+            category=category,
+            detail={
+                "classes": item.get("classes"),
+                "enwiki": item.get("enwiki"),
+                "stub": True,
+            },
+        )
 
     def _award_events(self, item: dict[str, Any]) -> Iterable[Event]:
         start = to_date(item.get("inception"))
