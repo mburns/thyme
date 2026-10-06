@@ -1,21 +1,75 @@
 {% extends "_base.html" %}
 
-{% block title %}Welcome to Thyme IMDB{% endblock %}
+{% block title %}Thyme — when things happened, side by side{% endblock %}
 
 {% block content %}
-<h1>Welcome to Thyme IMDB</h1>
-<p>Your minimalist guide to the world of cinema.</p>
-<p>
-  Use the navigation above to explore:
-  <ul>
-      <li><a href="/movies.html">Movies</a></li>
-      <li><a href="/tv.html">TV</a></li>
-      <li><a href="/persons.html">People</a></li>
-      <li><a href="/genres.html">Genres</a></li>
-      <li><a href="/top-rated.html">Top Rated</a> titles</li>
-  </ul>
-</p>
-<p>
-    You can also browse our collection of <a href="/short.html">Shorts</a>, <a href="/video.html">Videos</a>, and <a href="/videogame.html">Video Games</a>.
-</p>
+<section class="hero">
+    <h1>When did that happen?</h1>
+    <p>
+        Thyme lines up millions of dated events from open datasets on one scrolling timeline:
+        album releases next to ball games, lives next to film premieres, wars next to the people
+        who fought them. Pick an event and read everything else as years before or after it.
+    </p>
+    <p>
+        <a class="button" href="/timeline.html">Open the timeline</a>
+        <a class="button secondary" href="/search.html">Search for a name</a>
+    </p>
+</section>
+
+<section x-data="{
+    sources: [],
+    total: 0,
+    async init() {
+        try {
+            const data = await (await fetch('/timeline/sources?top=3')).json();
+            this.sources = (data.sources || []).filter(s => s.events > 0);
+            this.total = this.sources.reduce((n, s) => n + s.events, 0);
+        } catch (e) { /* the cards simply stay empty */ }
+    },
+    year(y) { return y <= 0 ? (1 - y) + ' BCE' : String(y); }
+}">
+    <h2>In the database <small x-show="total" x-text="`${total.toLocaleString()} events`"></small></h2>
+    <div class="cards">
+        <template x-for="s in sources" :key="s.slug">
+            <article class="card">
+                <h3><a :href="'/sources.html#' + s.slug" x-text="s.name"></a></h3>
+                <p x-text="`${s.events.toLocaleString()} events, ${year(s.firstYear)} – ${year(s.lastYear)}`"></p>
+                <p class="chips">
+                    <template x-for="c in s.topCategories" :key="c.category">
+                        <a class="chip" :href="`/timeline.html?source=${s.slug}&category=${encodeURIComponent(c.category)}`" x-text="c.category"></a>
+                    </template>
+                </p>
+            </article>
+        </template>
+    </div>
+    <p>See every dataset, its licence and what is planned on the <a href="/sources.html">sources page</a>.</p>
+</section>
+
+<section>
+    <h2>Starting points</h2>
+    <ul class="starts">
+        <li><a href="/timeline.html?zoom=12&at=1965&q=beatles">Every Beatles release</a>, with the band's own history as the ruler.</li>
+        <li><a href="/timeline.html?zoom=24&at=1947&source=nba,lahman">Baseball and basketball after the war</a>: seasons, awards and championships side by side.</li>
+        <li><a href="/timeline.html?from=-800&to=600&zoom=2&at=-100&source=wikidata_age">Antiquity</a>: who was alive at the same time.</li>
+        <li><a href="/timeline.html?zoom=48&at=1927&source=imdb">The first talkies</a> among the best-known films of their decade.</li>
+    </ul>
+</section>
+
+<section x-data="{
+    domains: [],
+    async init() {
+        try {
+            this.domains = (await (await fetch('/timeline/domains')).json()).domains || [];
+        } catch (e) { /* chips stay empty */ }
+    }
+}">
+    <h2>Browse by domain</h2>
+    <p class="chips">
+        <template x-for="d in domains" :key="d.slug">
+            <a class="chip" :class="{ muted: d.events === 0 }" :href="'/browse.html?domain=' + d.slug"
+               x-text="d.events ? `${d.name} · ${d.events.toLocaleString()}` : `${d.name} · planned`"></a>
+        </template>
+    </p>
+    <p>Film, music, sports, books, awards, science, politics, wars and more, each a short list of categories that keeps growing as sources are added. The <a href="/browse.html">browse page</a> shows what is in and what is planned.</p>
+</section>
 {% endblock %}

@@ -4,9 +4,11 @@ import {
   type HttpRequest,
   HttpResponse,
 } from "trailbase-wasm/http";
+import { buildTrigramMatch } from "./timeline";
 import { num, type Params, str } from "./values";
 
-/// Full-text search over titles and persons, served at `GET /search`.
+/// Full-text search over IMDB titles and persons and over timeline entities
+/// from every source, served at `GET /search`.
 ///
 /// Query parameters:
 ///   q        search text (required). Bare words are AND-ed and the last one
@@ -16,11 +18,14 @@ import { num, type Params, str } from "./values";
 ///   limit    results per page and per type, 1..MAX_LIMIT (default 20)
 ///   titles   "false" to skip titles
 ///   persons  "false" to skip persons
+///   entities "false" to skip timeline entities (people, teams, artists...)
 ///   years    "false" to stop matching title years, so "1999" only finds
 ///            titles with 1999 in their name
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+/// Trigram hits considered before ranking; "the" alone matches millions.
+const ENTITY_HIT_CAP = 400;
 
 export interface TitleResult {
   type: "title";
@@ -50,14 +55,91 @@ export interface PersonResult {
   highlight: string | null;
 }
 
+/// A timeline entity from any source, with the span (life, career, run)
+/// that best places it in time.
+export interface EntityResult {
+  type: "entity";
+  id: number;
+  name: string;
+  kind: string;
+  source: string;
+  wikidataId: string | null;
+  url: string | null;
+  category: string | null;
+  label: string | null;
+  startYear: number | null;
+  endYear: number | null;
+  rank: number;
+}
+
 export interface SearchResponse {
-  results: (TitleResult | PersonResult)[];
+  results: (TitleResult | PersonResult | EntityResult)[];
   totalPages: number;
   currentPage: number;
   totalResults: number;
+  /// Entity hits stop at ENTITY_HIT_CAP, so the total is a lower bound.
+  entitiesCapped: boolean;
   query: string;
-  filters: { titles: boolean; persons: boolean; years: boolean };
+  filters: {
+    titles: boolean;
+    persons: boolean;
+    entities: boolean;
+    years: boolean;
+  };
   error?: string;
+}
+
+/// Entities whose name matches every term, best-ranked first. The trigram
+/// index cannot rank, so the first ENTITY_HIT_CAP hits are taken and then
+/// ordered by the rank of each entity's top event.
+export function buildEntitySearchQuery(
+  match: string,
+  limit: number,
+  offset: number,
+  cap: number = ENTITY_HIT_CAP,
+): { sql: string; params: unknown[] } {
+  const sql = `
+    SELECT entities.id, entities.name, entities.kind, sources.slug,
+           entities.wikidata_id, entities.url, top.category, top.label,
+           top.start_year, top.end_year, top.rank, hits.n
+      FROM (SELECT rowid, count(*) OVER () AS n
+              FROM (SELECT rowid FROM entities_fts WHERE entities_fts MATCH ? LIMIT ?)) hits
+      CROSS JOIN entities ON entities.id = hits.rowid
+      CROSS JOIN sources ON sources.id = entities.source_id
+      LEFT JOIN events top ON top.id = (
+             SELECT id FROM events WHERE entity_id = entities.id
+              ORDER BY span DESC, rank DESC, start_year LIMIT 1)
+     ORDER BY coalesce(top.rank, -1) DESC, entities.name
+     LIMIT ? OFFSET ?`;
+  return { sql, params: [match, cap, limit, offset] };
+}
+
+async function searchEntities(
+  raw: string,
+  limit: number,
+  offset: number,
+): Promise<{ results: EntityResult[]; total: number }> {
+  const match = buildTrigramMatch(raw);
+  if (match === null) {
+    return { results: [], total: 0 };
+  }
+  const { sql, params } = buildEntitySearchQuery(match, limit, offset);
+  const rows = await query(sql, params as Params);
+  const results: EntityResult[] = rows.map((row) => ({
+    type: "entity",
+    id: num(row[0]) ?? 0,
+    name: str(row[1]) ?? "",
+    kind: str(row[2]) ?? "",
+    source: str(row[3]) ?? "",
+    wikidataId: str(row[4]),
+    url: str(row[5]),
+    category: str(row[6]),
+    label: str(row[7]),
+    startYear: num(row[8]),
+    endYear: num(row[9]),
+    rank: num(row[10]) ?? 0,
+  }));
+  return { results, total: num(rows[0]?.[11]) ?? 0 };
 }
 
 /// Turn free text into a safe FTS5 MATCH expression, or null if there is
@@ -204,6 +286,7 @@ export async function search(req: HttpRequest): Promise<SearchResponse> {
   const filters = {
     titles: req.getQueryParam("titles") !== "false",
     persons: req.getQueryParam("persons") !== "false",
+    entities: req.getQueryParam("entities") !== "false",
     years: req.getQueryParam("years") !== "false",
   };
 
@@ -212,6 +295,7 @@ export async function search(req: HttpRequest): Promise<SearchResponse> {
     totalPages: 0,
     currentPage: page,
     totalResults: 0,
+    entitiesCapped: false,
     query: searchQuery,
     filters,
   };
@@ -226,13 +310,11 @@ export async function search(req: HttpRequest): Promise<SearchResponse> {
       ? match
       : restrictToColumns(match, ["primaryTitle", "originalTitle", "genres"]);
 
-    const [titles, persons] = await Promise.all([
-      filters.titles
-        ? searchTitles(titleMatch, limit, offset)
-        : Promise.resolve({ results: [], total: 0 }),
-      filters.persons
-        ? searchPersons(match, limit, offset)
-        : Promise.resolve({ results: [], total: 0 }),
+    const none = Promise.resolve({ results: [], total: 0 });
+    const [titles, persons, entities] = await Promise.all([
+      filters.titles ? searchTitles(titleMatch, limit, offset) : none,
+      filters.persons ? searchPersons(match, limit, offset) : none,
+      filters.entities ? searchEntities(searchQuery, limit, offset) : none,
     ]);
 
     // Each type is paginated independently with the same page/limit, so the
@@ -240,13 +322,15 @@ export async function search(req: HttpRequest): Promise<SearchResponse> {
     const totalPages = Math.max(
       Math.ceil(titles.total / limit),
       Math.ceil(persons.total / limit),
+      Math.ceil(entities.total / limit),
     );
 
     return {
-      results: [...titles.results, ...persons.results],
+      results: [...entities.results, ...titles.results, ...persons.results],
       totalPages,
       currentPage: page,
-      totalResults: titles.total + persons.total,
+      totalResults: titles.total + persons.total + entities.total,
+      entitiesCapped: entities.total >= ENTITY_HIT_CAP,
       query: searchQuery,
       filters,
     };

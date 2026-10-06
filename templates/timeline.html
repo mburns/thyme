@@ -1,0 +1,52 @@
+{% extends "_base.html" %}
+
+{% block title %}Timeline | Thyme{% endblock %}
+
+{% block main_class %}container wide{% endblock %}
+
+{% block content %}
+<div class="tl-toolbar">
+    <div class="tl-field">
+        <label for="tl-q">Name</label>
+        <input id="tl-q" type="search" placeholder="e.g. Beatles, Yankees, Curie" autocomplete="off">
+    </div>
+    <div class="tl-field">
+        <label for="tl-category">Categories</label>
+        <input id="tl-category" type="text" placeholder="music, baseball, politician" autocomplete="off">
+    </div>
+    <div class="tl-field tl-field-years">
+        <label for="tl-from">World</label>
+        <input id="tl-from" type="number" step="1" aria-label="First year">
+        <span>to</span>
+        <input id="tl-to" type="number" step="1" aria-label="Last year">
+    </div>
+    <div class="tl-field">
+        <label for="tl-goto">Go to</label>
+        <input id="tl-goto" type="number" step="1" placeholder="year">
+    </div>
+    <div class="tl-field tl-zoom">
+        <button id="tl-zoom-out" type="button" title="Zoom out (−)">−</button>
+        <button id="tl-zoom-in" type="button" title="Zoom in (+)">+</button>
+    </div>
+    <div id="tl-sources" class="tl-field tl-source-toggles" aria-label="Sources"></div>
+</div>
+<p id="tl-domains" class="chips tl-domains" aria-label="Domains"></p>
+<p id="tl-anchor" class="tl-anchor" hidden></p>
+<div id="timeline" class="tl"></div>
+<p class="tl-help">
+    Scroll sideways to move through time, <kbd>ctrl</kbd>+wheel or <kbd>+</kbd>/<kbd>−</kbd> to zoom.
+    Zoomed out, each band shows its highest-ranked events per decade or century; zoom in for everything.
+    Click an event for details, then <em>Compare from here</em> to read every other event as years before or after it.
+</p>
+<p class="tl-presets">
+    Try:
+    <a href="/timeline.html?zoom=12&at=1965&q=beatles">The Beatles' releases</a> ·
+    <a href="/timeline.html?zoom=24&at=1947&source=nba,lahman">post-war ball</a> ·
+    <a href="/timeline.html?zoom=1&at=1500&source=wikidata_age&category=philosopher,astronomer">philosophers and astronomers</a> ·
+    <a href="/timeline.html?from=-800&to=600&zoom=2&at=-100">antiquity</a>
+</p>
+{% endblock %}
+
+{% block scripts %}
+<script type="module" src="/static/js/timeline.js"></script>
+{% endblock %}

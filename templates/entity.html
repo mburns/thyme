@@ -1,0 +1,113 @@
+{% extends "_base.html" %}
+
+{% block title %}Entity | Thyme{% endblock %}
+
+{% block content %}
+<div x-data="{
+    id: window.location.hash.substring(1),
+    entity: null,
+    events: [],
+    members: [],
+    total: null,
+    loading: true,
+    error: null,
+    async init() {
+        if (!this.id) { this.error = 'No entity id in the URL'; this.loading = false; return; }
+        try {
+            const [ent, tl, links] = await Promise.all([
+                fetch(`/api/records/v1/entities/${this.id}`).then(r => r.json()),
+                fetch(`/timeline?participant=${this.id}&from=-100000&to=9999&limit=1000`).then(r => r.json()),
+                fetch(`/timeline/links?entity=${this.id}`).then(r => r.json()),
+            ]);
+            this.entity = ent.id ? ent : null;
+            if (this.entity) {
+                const src = await fetch(`/api/records/v1/sources/${this.entity.source_id}`).then(r => r.json());
+                this.entity.sourceName = src.name || `source #${this.entity.source_id}`;
+            }
+            this.events = [...(tl.active || []), ...(tl.events || [])]
+                .filter((e, i, arr) => arr.findIndex(o => o.id === e.id) === i)
+                .sort((a, b) => a.startYear - b.startYear || a.id - b.id);
+            this.total = tl.total;
+            this.members = (links.members || []).filter(m => m.entityId !== Number(this.id));
+            document.title = (this.entity ? this.entity.name : 'Entity') + ' | Thyme';
+        } catch (e) {
+            this.error = 'Could not load this entity';
+        }
+        this.loading = false;
+    },
+    year(y) { return y === null || y === undefined ? '' : (y <= 0 ? (1 - y) + ' BCE' : String(y)); },
+    dates(e) {
+        const start = e.precision === 'year' ? this.year(e.startYear) : e.startDate;
+        if (!e.span) return (e.certainty === 'circa' ? 'c. ' : '') + start;
+        const end = e.endYear === null ? 'present' : (e.precision === 'year' || !e.endDate ? this.year(e.endYear) : e.endDate);
+        return `${start} – ${end}`;
+    },
+    span() {
+        const s = this.events.find(e => e.span);
+        return s || this.events[0] || null;
+    },
+    timelineUrl() {
+        const s = this.span();
+        if (!s) return '/timeline.html';
+        const from = s.startYear - 10, to = (s.endYear ?? new Date().getFullYear()) + 10;
+        return `/timeline.html?q=${encodeURIComponent(this.entity.name)}&zoom=${(1200 / (to - from)).toPrecision(2)}&at=${Math.round((from + to) / 2)}&anchor=${s.startYear}:${encodeURIComponent(s.label)}`;
+    },
+    detail(e) {
+        return Object.entries(e.detail || {}).filter(([k, v]) => v !== null && v !== '' && typeof v !== 'object')
+            .map(([k, v]) => `${k}: ${v}`).join(' · ');
+    }
+}">
+    <p x-show="loading">Loading…</p>
+    <p x-show="error" x-text="error" class="error"></p>
+
+    <template x-if="entity">
+        <div>
+            <h1 x-text="entity.name"></h1>
+            <p>
+                <span class="chip" x-text="entity.kind"></span>
+                <a class="chip" :href="'/sources.html'" x-text="entity.sourceName"></a>
+                <a class="chip" x-show="entity.wikidata_id" :href="'https://www.wikidata.org/wiki/' + entity.wikidata_id" target="_blank" rel="noopener" x-text="entity.wikidata_id"></a>
+                <a class="chip" x-show="entity.url" :href="entity.url" target="_blank" rel="noopener">source page ↗</a>
+            </p>
+            <p x-show="entity.description" x-text="entity.description"></p>
+            <p>
+                <a class="button" :href="timelineUrl()">Open on the timeline</a>
+            </p>
+
+            <div x-show="members.length > 0">
+                <h2>Also known in</h2>
+                <ul>
+                    <template x-for="m in members" :key="m.entityId">
+                        <li>
+                            <a :href="'/entity.html#' + m.entityId" x-text="m.name"></a>
+                            <small x-text="`${m.source} · ${m.kind}` + (m.method ? ` · linked by ${m.method}` : '')"></small>
+                        </li>
+                    </template>
+                </ul>
+            </div>
+
+            <h2>Events <small x-show="total !== null" x-text="`(${total.toLocaleString()}${total >= 10000 ? '+' : ''})`"></small></h2>
+            <p x-show="events.length === 0">No dated events for this entity yet.</p>
+            <table x-show="events.length > 0">
+                <thead>
+                    <tr><th>When</th><th>Event</th><th>Kind</th><th>Category</th><th>Details</th></tr>
+                </thead>
+                <tbody>
+                    <template x-for="e in events" :key="e.id">
+                        <tr>
+                            <td x-text="dates(e)"></td>
+                            <td>
+                                <span x-text="e.label"></span>
+                                <small x-show="e.entity.id !== Number(id)"> · <a :href="'/entity.html#' + e.entity.id" x-text="e.entity.name"></a></small>
+                            </td>
+                            <td x-text="e.kind"></td>
+                            <td><a :href="`/timeline.html?category=${encodeURIComponent(e.category)}&at=${e.startYear}&zoom=24`" x-text="e.category"></a></td>
+                            <td><small x-text="detail(e)"></small></td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+    </template>
+</div>
+{% endblock %}

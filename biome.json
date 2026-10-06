@@ -23,6 +23,7 @@
       "!dist/**/*",
       "!wasm/dist/**/*",
       "!scripts/fixtures/**/*",
+      "!data/**/*",
       "!node_modules/**/*",
       "!.mypy_cache/**/*",
       "!venv/**/*"

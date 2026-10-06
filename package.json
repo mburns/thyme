@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "build:site": "tsx scripts/build.ts",
+    "build:site": "tsx scripts/build.ts && vite build --config web/vite.config.ts",
     "wasm:bundle": "vite build --config wasm/vite.config.ts",
     "wasm:componentize": "jco componentize wasm/dist/index.js -w node_modules/trailbase-wasm/wit -o wasm/dist/component.wasm",
     "wasm:build": "yarn wasm:bundle && yarn wasm:componentize && mkdir -p traildepot/wasm && cp wasm/dist/component.wasm traildepot/wasm/component.wasm",
@@ -21,7 +21,7 @@
     "lint:fix": "biome check --write .",
     "format": "biome format . --write",
     "format:check": "biome format .",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc --noEmit && tsc -p web",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

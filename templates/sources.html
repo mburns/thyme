@@ -1,0 +1,76 @@
+{% extends "_base.html" %}
+
+{% block title %}Data sources | Thyme{% endblock %}
+
+{% block content %}
+<h1>Data sources</h1>
+<p>
+    Every band on the <a href="/timeline.html">timeline</a> is one of these datasets, imported into one
+    <code>events</code> table by <code>scripts/ingest_events.py</code>. A source is re-synced only when its
+    files change; the same person, team or title in two sources is linked through Wikidata ids, external
+    identifiers or name and dates.
+</p>
+
+<div x-data="{
+    sources: [],
+    loading: true,
+    error: null,
+    async init() {
+        try {
+            const res = await fetch('/timeline/sources?top=6');
+            const data = await res.json();
+            this.sources = data.sources || [];
+            this.error = data.error || null;
+        } catch (e) {
+            this.error = 'Could not load sources';
+        }
+        this.loading = false;
+    },
+    year(y) { return y === null ? '' : (y <= 0 ? (1 - y) + ' BCE' : String(y)); },
+    when(ts) { return ts ? new Date(ts * 1000).toISOString().slice(0, 10) : 'never'; },
+    timelineUrl(s) {
+        const from = s.firstYear === null ? 1800 : Math.max(s.firstYear, -3000);
+        const to = s.lastYear === null ? 2030 : s.lastYear + 5;
+        return `/timeline.html?source=${s.slug}&from=${from}&to=${to}&zoom=${(1200 / (to - from)).toPrecision(2)}&at=${Math.round((from + to) / 2)}`;
+    }
+}">
+    <p x-show="loading">Loading sources…</p>
+    <p x-show="error" x-text="error" class="error"></p>
+
+    <div class="cards">
+        <template x-for="s in sources" :key="s.slug">
+            <article class="card" :id="s.slug">
+                <h2>
+                    <a :href="timelineUrl(s)" x-text="s.name"></a>
+                    <small x-show="s.events === 0">not synced yet</small>
+                </h2>
+                <p x-text="s.description"></p>
+                <dl class="facts">
+                    <dt>Events</dt><dd x-text="s.events.toLocaleString()"></dd>
+                    <dt>Entities</dt><dd x-text="s.entities === null ? '–' : s.entities.toLocaleString()"></dd>
+                    <dt>Years</dt><dd x-text="s.firstYear === null ? '–' : year(s.firstYear) + ' – ' + year(s.lastYear)"></dd>
+                    <dt>Categories</dt><dd x-text="s.categoryCount.toLocaleString()"></dd>
+                    <dt>Last sync</dt><dd x-text="s.lastSync ? when(s.lastSync.finished) + (s.lastSync.version ? ' (' + s.lastSync.version + ')' : '') : 'never'"></dd>
+                    <dt>Licence</dt><dd x-text="s.license || '–'"></dd>
+                </dl>
+                <p class="chips">
+                    <template x-for="c in s.topCategories" :key="c.category">
+                        <a class="chip" :href="`/timeline.html?source=${s.slug}&category=${encodeURIComponent(c.category)}`"
+                           x-text="`${c.category} · ${c.events.toLocaleString()}`"></a>
+                    </template>
+                </p>
+                <p><a :href="s.homepage" target="_blank" rel="noopener" x-show="s.homepage">Dataset homepage ↗</a></p>
+            </article>
+        </template>
+    </div>
+</div>
+
+<h2>Planned sources</h2>
+<p>Adapters that exist in <code>scripts/ingest/</code> but may have no data in this database yet, and datasets on the list. A source above with "not synced yet" only needs its files under <code>data/</code> and <code>make sync-events</code>.</p>
+<ul class="planned">
+    <li><strong>Wikidata dump</strong> (<code>wikidata</code> adapter): every person, conflict, country and award with dates, from a reduced <code>latest-all.json</code>. Run <code>make wikidata-extract DUMP=…</code> then <code>make sync-events</code>.</li>
+    <li><strong>Every dated Wikidata item</strong>: <code>scripts/wikidata_extract.py --all-dated</code> also keeps any item with a calendar date (inception, publication, point in time) as a stub event under its first class, so books, earthquakes, treaties and launches appear before they get a parser of their own.</li>
+    <li><strong>More Wikipedia lists</strong> (<code>wikipedia_lists</code> adapter): <code>make wikipedia-lists SEEDS="List of treaties"</code> fetches any bibliography or "List of …" page; publications become books and articles, every other dated line a stub entry.</li>
+    <li>Candidates: Open Library editions, Billboard charts, Nobel laureates, UN membership, spaceflight launches, football and tennis results.</li>
+</ul>
+{% endblock %}

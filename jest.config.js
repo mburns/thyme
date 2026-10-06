@@ -1,7 +1,7 @@
 export default {
   preset: "ts-jest",
   testEnvironment: "node",
-  roots: ["<rootDir>/scripts"],
+  roots: ["<rootDir>/scripts", "<rootDir>/web"],
   // Jest's default pattern also matches `scripts/test.ts`, which is a CLI
   // script, not a test suite.
   testMatch: ["**/__tests__/**/*.test.ts", "**/*.spec.ts"],
