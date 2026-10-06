@@ -12,6 +12,8 @@ category = "music"
 min_year = 1877
 max_year = 2030
 
+# "Various Artists" is MusicBrainz's placeholder for compilations: a quarter
+# of a million releases on one lane, which drowned the music overview.
 [[entities]]
 file = "music/official_releases.csv"
 kind = "artist"
@@ -20,6 +22,7 @@ name = "{artist_name}"
 description = "Musical artist"
 url = "https://musicbrainz.org/artist/{artist_mbid}"
 identifiers = { musicbrainz = "{artist_mbid}" }
+unless = { artist_mbid = "89ad4ac3-39f7-470e-963a-56509c546377" }
 
 [[events]]
 file = "music/official_releases.csv"
@@ -29,4 +32,5 @@ kind = "release"
 label = "{release_title}"
 start = { year = "{date_year}", month = "{date_month}", day = "{date_day}" }
 require = ["date_year"]
+unless = { artist_mbid = "89ad4ac3-39f7-470e-963a-56509c546377" }
 detail = { type = "{release_group_type}", country = "{country_code}", mbid = "{release_mbid}" }

@@ -200,9 +200,9 @@ function buildFilters(q: TimelineQuery): {
     params.push(q.span ? 1 : 0);
   }
   if (q.match !== null) {
-    where.push(
-      "events.entity_id IN (SELECT rowid FROM entities_fts WHERE entities_fts MATCH ?)",
-    );
+    // The FROM clause (see driver()) joins events to the FTS hits; the MATCH
+    // itself has to sit in WHERE.
+    where.push("entities_fts MATCH ?");
     params.push(q.match);
   }
   if (q.participant !== null) {
@@ -232,6 +232,15 @@ const EVENT_JOINS = `
       CROSS JOIN sources ON sources.id = events.source_id
       LEFT JOIN entity_links ON entity_links.entity_id = entities.id`;
 
+/// The table that drives an events query. With a name filter the few
+/// hundred FTS hits drive the join (events_by_entity does the rest) instead
+/// of walking the whole window and checking each row against the hits.
+function driver(q: TimelineQuery): string {
+  return q.match === null
+    ? "FROM events"
+    : "FROM entities_fts CROSS JOIN events ON events.entity_id = entities_fts.rowid";
+}
+
 /// Bucket size for span_lod given a window width.
 export function spanBucketSize(from: number, to: number): number {
   return to - from <= 100 ? 10 : 100;
@@ -258,7 +267,7 @@ export function buildWindowQuery(q: TimelineQuery): {
   }
   const sql = `
     SELECT ${EVENT_COLUMNS}
-      FROM events${EVENT_JOINS}
+      ${driver(q)}${EVENT_JOINS}
      WHERE ${[...bounds, ...where].join("\n       AND ")}
      ORDER BY events.start_year, events.id
      LIMIT ?`;
@@ -317,6 +326,22 @@ export function buildActiveQuery(q: TimelineQuery): {
     return { sql, params: [...params, q.from, q.limit] };
   }
   const { where, params } = buildFilters(q);
+  if (q.match !== null) {
+    // Few entities match a name; their spans come straight off
+    // events_by_entity, no R*Tree needed.
+    const bounds = [
+      "events.span = 1",
+      "events.start_year < ?",
+      "coalesce(events.end_year, 9999) >= ?",
+    ];
+    const sql = `
+    SELECT ${EVENT_COLUMNS}
+      ${driver(q)}${EVENT_JOINS}
+     WHERE ${[...bounds, ...where].join("\n       AND ")}
+     ORDER BY events.rank DESC, events.id
+     LIMIT ?`;
+    return { sql, params: [q.from, q.from, ...params, q.limit] };
+  }
   const bounds = [
     "events_span.start_year < ?",
     "events_span.end_year >= ?",
@@ -341,7 +366,7 @@ export function buildCountQuery(
   const sql = `
     SELECT count(*) FROM (
       SELECT 1
-        FROM events
+        ${driver(q)}
         CROSS JOIN sources ON sources.id = events.source_id
        WHERE ${["events.start_year BETWEEN ? AND ?", ...where].join("\n       AND ")}
        LIMIT ?)`;

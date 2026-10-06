@@ -116,6 +116,10 @@ describe("buildWindowQuery", () => {
     expect(sql).toContain("sources.slug IN (?)");
     expect(sql).toContain("events.kind IN (?)");
     expect(sql).toContain("events.span = ?");
+    // A name filter makes the FTS hits drive the join.
+    expect(sql).toContain(
+      "FROM entities_fts CROSS JOIN events ON events.entity_id = entities_fts.rowid",
+    );
     expect(sql).toContain("entities_fts MATCH ?");
     expect(sql).toContain(
       "SELECT event_id FROM event_participants WHERE entity_id = ?",
@@ -159,14 +163,22 @@ describe("buildActiveQuery", () => {
     expect(params.slice(0, 2)).toEqual([100, 1500]);
   });
 
-  it("falls back to the R*Tree point query when a filter needs it", () => {
+  it("drives from the FTS hits when a name filter is set", () => {
     const { sql, params } = buildActiveQuery({ ...base, match: '"aar"' });
+    expect(sql).toContain("FROM entities_fts CROSS JOIN events");
+    expect(sql).not.toContain("events_span");
+    expect(sql).toContain("events.span = 1");
+    expect(sql).toContain("coalesce(events.end_year, 9999) >= ?");
+    expect(sql).toContain("ORDER BY events.rank DESC");
+    expect(params).toEqual([1950, 1950, '"aar"', 100]);
+  });
+
+  it("falls back to the R*Tree point query for kind or participant filters", () => {
+    const { sql, params } = buildActiveQuery({ ...base, kinds: ["life"] });
     expect(sql).toContain("FROM events_span");
     expect(sql).toContain("events_span.start_year < ?");
     expect(sql).toContain("events_span.end_year >= ?");
-    expect(sql).toContain("events.span = 1");
-    expect(sql).toContain("ORDER BY events.rank DESC");
-    expect(params).toEqual([1950, 1950, '"aar"', 100]);
+    expect(params).toEqual([1950, 1950, "life", 100]);
   });
 });
 

@@ -32,6 +32,7 @@ Spec shape (see ``specs/nba.toml`` for a complete example)::
     span = true
     require = ["birthdate"]               # columns that must be non-empty
     when = { draft_type = "Draft" }       # column == value filters
+    unless = { artist_mbid = "..." }      # skip rows where column == value
     detail = { school = "{school}" }      # extra columns kept as JSON
 
     [[participants]]
@@ -140,6 +141,9 @@ def _passes(block: dict[str, Any], row: dict[str, str]) -> bool:
             return False
     for column, value in block.get("when", {}).items():
         if row.get(column, "").strip() != value:
+            return False
+    for column, value in block.get("unless", {}).items():
+        if row.get(column, "").strip() == value:
             return False
     return True
 

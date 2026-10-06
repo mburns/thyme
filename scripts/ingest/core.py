@@ -433,8 +433,10 @@ WHERE e.source_id <> c.source_id
 """
 
 # Importance of an event: audience (votes), cast (participants) and how much
-# else is known about its owner. log10 needs SQLite's math functions, which
-# Python's module has; the fallback keeps the ingest working without them.
+# else is known about its owner, the last capped at 100 events so catalogue
+# entities ("Various Artists" with 250k releases) do not outrank everything.
+# log10 needs SQLite's math functions, which Python's module has; the
+# fallback keeps the ingest working without them.
 # The two counts are aggregated once into keyed temp tables rather than
 # re-counted per event: a correlated count per row took 40 minutes over
 # 6M events, this takes a few.
@@ -458,7 +460,7 @@ UPDATE_RANK = """
 UPDATE events SET rank =
     coalesce(log10(1 + coalesce(json_extract(detail, '$.votes'), 0)), 0)
   + coalesce((SELECT log10(1 + n) FROM rank_credits WHERE event_id = events.id), 0)
-  + coalesce((SELECT log10(n) FROM rank_owner WHERE entity_id = events.entity_id), 0)
+  + coalesce((SELECT min(log10(n), 2.0) FROM rank_owner WHERE entity_id = events.entity_id), 0)
 WHERE source_id = ?
 """
 UPDATE_RANK_FALLBACK = """

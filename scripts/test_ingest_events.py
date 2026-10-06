@@ -110,6 +110,7 @@ c0b2500e-0cef-4130-869d-732b23ed9df5,Tori Amos,b1b1b1b1-0000-0000-0000-000000000
 b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d,The Beatles,c2c2c2c2-0000-0000-0000-000000000002,Abbey Road,1969,9,26,Album,GB
 b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d,The Beatles,d3d3d3d3-0000-0000-0000-000000000003,Undated,,,,Album,
 b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d,The Beatles,e4e4e4e4-0000-0000-0000-000000000004,From the Future,3036,1,1,Album,
+89ad4ac3-39f7-470e-963a-56509c546377,Various Artists,f5f5f5f5-0000-0000-0000-000000000005,Now That's What I Call Music,1983,11,28,Album,GB
 """
 
 
@@ -781,6 +782,11 @@ class CsvSourceTest(IngestTest):
                 "WHERE entities.name = 'The Beatles'"
             ).fetchone(),
             ("b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",),
+        )
+        # The compilation placeholder artist is skipped by the spec's `unless`.
+        self.assertEqual(
+            self.count("SELECT COUNT(*) FROM entities WHERE name = 'Various Artists'"),
+            0,
         )
 
 
