@@ -100,7 +100,10 @@ ID_PROPS = {
     "P345": "imdb",
     "P1825": "bbref",
     "P3171": "olympedia",
-    "P2002": "twitter",
+    "P434": "musicbrainz",  # MusicBrainz artist ID
+    "P3647": "nba",  # NBA.com player ID
+    "P1733": "steam",  # Steam application ID
+    "P648": "openlibrary",
 }
 # Relation properties with the qualifiers that date them.
 RELATION_PROPS = {

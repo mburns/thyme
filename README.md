@@ -206,6 +206,8 @@ flattened read model and `entities_fts` the name index.
 | `olympics` | `data/sports/olympic_events/athlete_events.csv` | each Games, each athlete appearance, each medal |
 | `wikidata_age` | `data/wiki/AgeDataset-V*.csv` | 1.2M people's life spans with Wikidata QIDs and occupation |
 | `wikidata` | `data/wikidata/{items,labels}.jsonl.gz` (from the dump, see below) | people (life spans, awards received, positions held), wars and battles with their participants, countries, awards; IMDb and Baseball-Reference ids for exact linking |
+| `nba` (TOML spec) | `data/sports/nba/csv/*.csv` | player life, career and draft; every game since 1946 as an instant on the home team's lane with the away team as participant; franchise eras; NBA.com ids |
+| `musicbrainz` (TOML spec) | `data/music/official_releases.csv` | every official release (5.3M) as an instant on its artist's lane, with MusicBrainz artist ids |
 
 ```bash
 make sources        # list sources, row counts, last sync, whether files changed
@@ -227,10 +229,14 @@ deletes rows the source no longer produces, and logs the run in
 `source_syncs`. Drop a newer file in place (for example `AgeDataset-V2.csv`)
 and the next `make sync-events` picks it up.
 
-To add a source, subclass `ingest.core.Source` in `scripts/ingest/sources/`,
-yield `Entity` and `Event` rows, and register it in `SOURCES`. Use the
-`wikidata_id` column wherever a QID is known; it is the join key between
-sources.
+To add a CSV dataset, write a TOML spec in `scripts/ingest/specs/`: which
+files, and how columns map onto entities, events (with `{column}` date
+templates), participants and identifiers. `specs/nba.toml` is the model;
+`scripts/ingest/csvsource.py` documents the format. Anything that needs
+real logic (IMDB's SQL, the Wikidata extract) is a `Source` subclass in
+`scripts/ingest/sources/`. Both kinds register automatically. Use the
+`wikidata_id` column wherever a QID is known and emit external identifiers
+wherever the dataset has them; they are the join keys between sources.
 
 ### Timeline API
 

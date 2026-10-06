@@ -82,6 +82,35 @@ Q34012,Marlon Brando,American actor,Male,United States of America,Artist,1924,20
 Q1,John Smith,English soldier,Male,England,Explorer,1580,1631,,51
 Q2,John Smith,Another John Smith,Male,England,Explorer,1580,1631,,51
 """
+NBA_PLAYERS = """\
+person_id,first_name,last_name,display_first_last,birthdate,school,country,position,season_exp,team_name,from_year,to_year,draft_year,draft_round,draft_number
+76001,Alaa,Abdelnaby,Alaa Abdelnaby,1968-06-24 00:00:00,Duke,USA,Forward,5.0,Trail Blazers,1990.0,1994.0,1990,1,25
+893,Michael,Jordan,Michael Jordan,1963-02-17 00:00:00,North Carolina,USA,Guard,15.0,Wizards,1984.0,2002.0,1984,1,3
+999,Nobody,Undated,Nobody Undated,,,,Center,,,,,,,
+"""
+NBA_DRAFT = """\
+person_id,player_name,season,round_number,round_pick,overall_pick,draft_type,team_id,team_city,team_name,team_abbreviation,organization,organization_type,player_profile_flag
+893,Michael Jordan,1984,1,3,3,Draft,1610612741,Chicago,Bulls,CHI,North Carolina,College/University,1
+893,Michael Jordan,1984,1,3,3,Expansion Draft,1610612741,Chicago,Bulls,CHI,North Carolina,College/University,1
+"""
+NBA_GAMES = """\
+season_id,team_id_home,team_abbreviation_home,team_name_home,game_id,game_date,matchup_home,wl_home,pts_home,team_id_away,team_abbreviation_away,team_name_away,pts_away,season_type
+21946,1610610035,HUS,Toronto Huskies,0024600001,1946-11-01 00:00:00,HUS vs. NYK,L,66.0,1610612752,NYK,New York Knicks,68.0,Regular Season
+41997,1610612741,CHI,Chicago Bulls,0049700086,1998-06-14 00:00:00,CHI @ UTA,W,87.0,1610612762,UTA,Utah Jazz,86.0,Playoffs
+"""
+NBA_TEAM_HISTORY = """\
+team_id,city,nickname,year_founded,year_active_till
+1610612741,Chicago,Bulls,1966,2019
+1610610035,Toronto,Huskies,1946,1946
+"""
+MUSICBRAINZ = """\
+artist_mbid,artist_name,release_mbid,release_title,date_year,date_month,date_day,release_group_type,country_code
+c0b2500e-0cef-4130-869d-732b23ed9df5,Tori Amos,425cf29a-1490-43ab-abfa-7b17a2cec351,A Sorta Fairytale,2002,10,14,Single,DE
+c0b2500e-0cef-4130-869d-732b23ed9df5,Tori Amos,b1b1b1b1-0000-0000-0000-000000000001,Little Earthquakes,1992,,,Album,GB
+b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d,The Beatles,c2c2c2c2-0000-0000-0000-000000000002,Abbey Road,1969,9,26,Album,GB
+b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d,The Beatles,d3d3d3d3-0000-0000-0000-000000000003,Undated,,,,Album,
+b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d,The Beatles,e4e4e4e4-0000-0000-0000-000000000004,From the Future,3036,1,1,Album,
+"""
 
 
 def write(path: Path, text: str) -> None:
@@ -116,6 +145,12 @@ class IngestTest(unittest.TestCase):
         )
         write(self.data / "sports" / "olympic_events" / "athlete_events.csv", OLYMPICS)
         write(self.data / "wiki" / "AgeDataset-V1.csv", WIKI)
+        nba = self.data / "sports" / "nba" / "csv"
+        write(nba / "common_player_info.csv", NBA_PLAYERS)
+        write(nba / "draft_history.csv", NBA_DRAFT)
+        write(nba / "game.csv", NBA_GAMES)
+        write(nba / "team_history.csv", NBA_TEAM_HISTORY)
+        write(self.data / "music" / "official_releases.csv", MUSICBRAINZ)
         wikidata_extract.run(str(WIKIDATA_DUMP), self.data / "wikidata", None, 10**6)
         self.conn = make_db(root / "main.db")
         self.conn.executescript(
@@ -192,6 +227,13 @@ class IngestTest(unittest.TestCase):
             {"life": 4, "conflict": 1, "exists": 1, "established": 1},
         )
         self.assertGreaterEqual(wikidata["award"], 1)
+        # Declarative sources: the undated player and the expansion draft
+        # row are filtered; the undated and year-3036 releases are skipped.
+        self.assertEqual(
+            self.events_for("nba"),
+            {"life": 2, "career": 2, "draft": 1, "game": 2, "run": 2},
+        )
+        self.assertEqual(self.events_for("musicbrainz"), {"release": 3})
 
     def test_dates_and_precision(self) -> None:
         self.sync_all()
@@ -646,6 +688,100 @@ class WikidataTest(IngestTest):
             "SELECT url FROM entities WHERE wikidata_id = 'Q362'"
         ).fetchone()[0]
         self.assertEqual(url, "https://en.wikipedia.org/wiki/World_War_II")
+
+
+class CsvSourceTest(IngestTest):
+    """Declarative TOML sources: NBA and MusicBrainz."""
+
+    def test_templates_and_dates(self) -> None:
+        from ingest.csvsource import parse_date, render
+
+        self.assertEqual(render("{a|int}-{b}", {"a": "66.0", "b": "x"}), "66-x")
+        self.assertEqual(parse_date("1968-06-24 00:00:00"), ("1968-06-24", "day", 1968))
+        self.assertEqual(parse_date("1990.0"), ("1990", "year", 1990))
+        self.assertEqual(parse_date("7/31/1996"), ("1996-07-31", "day", 1996))
+        self.assertEqual(parse_date("1946-11"), ("1946-11", "month", 1946))
+        self.assertIsNone(parse_date(""))
+        self.assertIsNone(parse_date("n/a"))
+
+    def test_nba_players_games_and_franchises(self) -> None:
+        result = self.syncer.sync(SOURCES["nba"])
+        self.assertEqual(result.status, "ok")
+        jordan = self.conn.execute(
+            "SELECT kind, start_date, end_date, precision, label FROM v_events "
+            "WHERE source = 'nba' AND entity_name = 'Michael Jordan' ORDER BY kind"
+        ).fetchall()
+        self.assertEqual(
+            jordan,
+            [
+                ("career", "1984", "2002", "year", "Michael Jordan's NBA career"),
+                ("draft", "1984", None, "year", "Drafted #3 by the Chicago Bulls"),
+                ("life", "1963-02-17", None, "day", "Michael Jordan"),
+            ],
+        )
+        game = self.conn.execute(
+            "SELECT label, start_date, entity_name, detail ->> 'home_points', detail ->> 'type' "
+            "FROM v_events WHERE kind = 'game' ORDER BY start_year"
+        ).fetchall()
+        self.assertEqual(
+            game,
+            [
+                (
+                    "Toronto Huskies 66 – New York Knicks 68",
+                    "1946-11-01",
+                    "Toronto Huskies",
+                    66,
+                    "Regular Season",
+                ),
+                (
+                    "Chicago Bulls 87 – Utah Jazz 86",
+                    "1998-06-14",
+                    "Chicago Bulls",
+                    87,
+                    "Playoffs",
+                ),
+            ],
+        )
+        away = self.conn.execute(
+            "SELECT entities.name, role FROM event_participants "
+            "JOIN events ON events.id = event_participants.event_id "
+            "JOIN entities ON entities.id = event_participants.entity_id "
+            "WHERE events.external_id = 'game:0049700086'"
+        ).fetchall()
+        self.assertEqual(away, [("Utah Jazz", "away")])
+        eras = self.conn.execute(
+            "SELECT label, start_year, end_year FROM v_events WHERE source = 'nba' AND kind = 'run' ORDER BY start_year"
+        ).fetchall()
+        self.assertEqual(
+            eras, [("Toronto Huskies", 1946, 1946), ("Chicago Bulls", 1966, 2019)]
+        )
+        ids = self.conn.execute(
+            "SELECT scheme, value FROM entity_identifiers JOIN entities ON entities.id = entity_id "
+            "WHERE entities.name = 'Michael Jordan'"
+        ).fetchall()
+        self.assertEqual(ids, [("nba", "893")])
+
+    def test_musicbrainz_releases_with_partial_dates(self) -> None:
+        self.syncer.sync(SOURCES["musicbrainz"])
+        rows = self.conn.execute(
+            "SELECT entity_name, label, start_date, precision, detail ->> 'type' "
+            "FROM v_events WHERE source = 'musicbrainz' ORDER BY start_year"
+        ).fetchall()
+        self.assertEqual(
+            rows,
+            [
+                ("The Beatles", "Abbey Road", "1969-09-26", "day", "Album"),
+                ("Tori Amos", "Little Earthquakes", "1992", "year", "Album"),
+                ("Tori Amos", "A Sorta Fairytale", "2002-10-14", "day", "Single"),
+            ],
+        )
+        self.assertEqual(
+            self.conn.execute(
+                "SELECT value FROM entity_identifiers JOIN entities ON entities.id = entity_id "
+                "WHERE entities.name = 'The Beatles'"
+            ).fetchone(),
+            ("b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d",),
+        )
 
 
 if __name__ == "__main__":

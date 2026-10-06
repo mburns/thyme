@@ -1,12 +1,14 @@
 """Registry of source adapters, keyed by slug.
 
-To add a dataset, implement a ``Source`` subclass in this package and add an
-instance here. The CLI, status listing and tests pick it up automatically.
+Python adapters live in this package; declarative CSV sources are TOML
+specs under ``scripts/ingest/specs/``. The CLI, status listing and tests
+pick both kinds up automatically.
 """
 
 from __future__ import annotations
 
 from ingest.core import Source
+from ingest.csvsource import load_specs
 from ingest.sources.imdb import ImdbSource
 from ingest.sources.lahman import LahmanSource
 from ingest.sources.olympics import OlympicsSource
@@ -21,6 +23,7 @@ SOURCES: dict[str, Source] = {
         OlympicsSource(),
         WikidataAgeSource(),
         WikidataSource(),
+        *load_specs(),
     )
 }
 

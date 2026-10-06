@@ -36,7 +36,15 @@ from ingest.core import (
 
 ITEMS = "wikidata/items.jsonl*"
 LABELS = "wikidata/labels.jsonl*"
-ID_SCHEMES = ("imdb", "bbref", "olympedia")
+ID_SCHEMES = (
+    "imdb",
+    "bbref",
+    "olympedia",
+    "musicbrainz",
+    "nba",
+    "steam",
+    "openlibrary",
+)
 
 
 def _open(path: Path) -> IO[str]:

@@ -209,7 +209,8 @@ class Source(ABC):
 
 def read_csv(path: Path, limit: int | None = None) -> Iterator[dict[str, str]]:
     """Yield rows of a CSV as dicts, stopping after ``limit`` rows if given."""
-    with path.open(encoding="utf-8", newline="") as f:
+    # utf-8-sig drops the byte-order mark some exports put before the header.
+    with path.open(encoding="utf-8-sig", newline="") as f:
         for i, row in enumerate(csv.DictReader(f)):
             if limit is not None and i >= limit:
                 return
