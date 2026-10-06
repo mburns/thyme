@@ -3,7 +3,6 @@ SQL query loader for IMDB import script.
 Provides clean separation between SQL and Python code.
 """
 
-import os
 from pathlib import Path
 from typing import Optional
 

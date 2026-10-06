@@ -25,12 +25,6 @@
     "noUncheckedIndexedAccess": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"],
-      "@/scripts/*": ["scripts/*"],
-      "@/types/*": ["types/*"]
-    },
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "experimentalDecorators": true,
@@ -38,10 +32,11 @@
     "incremental": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
-  "include": ["src/**/*", "scripts/**/*", "types/**/*", "**/*.ts"],
+  "include": ["scripts/**/*", "wasm/**/*"],
   "exclude": [
     "node_modules",
     "dist",
+    "wasm/dist",
     "coverage",
     "**/*.test.ts",
     "**/*.spec.ts",

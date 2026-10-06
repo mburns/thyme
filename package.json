@@ -26,9 +26,6 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "check-deps": "tsx scripts/check-deps.ts",
-    "sql-queries": "tsx scripts/sql-queries.ts",
-    "help": "tsx scripts/help.ts",
-    "info": "tsx scripts/info.ts",
     "prepare": "husky install",
     "pre-commit": "lint-staged"
   },
@@ -58,9 +55,7 @@
     "typescript": "^5.3.3",
     "vite": "^8.3.2"
   },
-  "dependencies": {
-    "sqlite3": "^5.1.7"
-  },
+  "dependencies": {},
   "lint-staged": {
     "*.{ts,tsx}": [
       "biome check --write",

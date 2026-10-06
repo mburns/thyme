@@ -37,7 +37,7 @@ import logging
 import argparse
 import gc
 from pathlib import Path
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict
 import time
 
 # Import SQL queries

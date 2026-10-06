@@ -38,6 +38,7 @@ traildepot/secrets
 traildepot/data
 traildepot/uploads
 traildepot/wasm
+traildepot/GeoLite2-Country.mmdb
 wasm/dist
 traildepot/trailbase.d.ts
 traildepot/trailbase.js

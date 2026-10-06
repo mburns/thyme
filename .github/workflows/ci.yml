@@ -2,109 +2,43 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, poc-3]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
-  test:
+  typescript:
+    name: TypeScript (lint, types, tests, site, WASM component)
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y sqlite3 curl gunzip tree shellcheck
-    
-    - name: Check dependencies
-      run: |
-        echo "Checking required commands..."
-        command -v sqlite3 || { echo "❌ sqlite3 not found"; exit 1; }
-        command -v curl || { echo "❌ curl not found"; exit 1; }
-        command -v gunzip || { echo "❌ gunzip not found"; exit 1; }
-        command -v shellcheck || { echo "❌ shellcheck not found"; exit 1; }
-        echo "✅ All dependencies found"
-    
-    - name: Test shell scripts
-      run: |
-        # Test shell script syntax
-        shellcheck --version
-        shellcheck *.sh --severity=warning
-        
-        # Test if scripts are executable
-        test -x import_imdb_sqlite.sh
-        test -x build.sh
-    
-    - name: Test build process
-      run: |
-        # Test that build script works
-        ./build.sh
-        
-        # Verify dist directory was created
-        test -d dist
-        test -f dist/index.html
-    
-    - name: Test database operations
-      run: |
-        # Create a test database directory
-        mkdir -p traildepot/data
-        
-        # Test database creation (this would normally be done by TrailBase)
-        sqlite3 traildepot/data/test.db "CREATE TABLE test (id INTEGER PRIMARY KEY);"
-        
-        # Test that our import script can connect to database
-        sqlite3 traildepot/data/test.db "SELECT 1;"
-    
-    - name: Test directory structure
-      run: |
-        # Test required directories exist
-        test -d templates
-        test -d static
-        test -d traildepot/migrations
-        
-        # Test required files exist
-        test -f templates/index.html
-        test -f templates/_base.html
-        test -f static/style.css
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn install --frozen-lockfile
+      - run: yarn lint
+      - run: yarn type-check
+      - run: yarn test
+      - run: yarn build:site
+      - run: yarn wasm:build
+      - name: Component is in place
+        run: test -s traildepot/wasm/component.wasm
 
-  shellcheck:
+  python:
+    name: Python (ruff, ingest tests, migrations)
     runs-on: ubuntu-latest
-    
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Run ShellCheck
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y shellcheck
-        shellcheck --version
-        shellcheck *.sh --severity=warning
-
-  markdown:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Markdown lint
-      run: |
-        npm install -g markdownlint-cli
-        markdownlint "**/*.md" --fix
-
-  format:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - uses: actions/checkout@v4
-    
-    - name: Install shfmt
-      run: |
-        wget -O shfmt https://github.com/mvdan/sh/releases/download/v3.6.0/shfmt_v3.6.0_linux_amd64
-        chmod +x shfmt
-        sudo mv shfmt /usr/local/bin/
-    
-    - name: Check shell script formatting
-      run: |
-        shfmt -d *.sh 
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: ruff check scripts/ingest scripts/ingest_events.py scripts/test_ingest_events.py scripts/test_search.py
+      - run: ruff format --check scripts/ingest scripts/ingest_events.py scripts/test_ingest_events.py scripts/test_search.py
+      - name: Migrations apply with the system sqlite3 CLI
+        run: |
+          sudo apt-get update && sudo apt-get install -y sqlite3
+          for m in traildepot/migrations/U*.sql; do sqlite3 ci.db < "$m"; done
+          sqlite3 ci.db "SELECT count(*) FROM sqlite_master WHERE name IN ('events', 'events_span', 'entities_fts', 'genres')" | grep -q '^4$'
+      - run: python3 scripts/test_ingest_events.py

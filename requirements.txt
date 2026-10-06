@@ -1,6 +1,3 @@
-fastapi
-uvicorn[standard]
-jinja2
-httpx
-flake8
-black 
+# The ingest and import scripts use only the standard library; ruff is the
+# linter and formatter.
+ruff>=0.6
