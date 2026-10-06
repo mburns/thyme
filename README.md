@@ -205,6 +205,7 @@ flattened read model and `entities_fts` the name index.
 | `lahman` | `data/sports/baseball/*.csv` | player life and career spans, awards, All-Star games, Hall of Fame, franchise runs and World Series wins |
 | `olympics` | `data/sports/olympic_events/athlete_events.csv` | each Games, each athlete appearance, each medal |
 | `wikidata_age` | `data/wiki/AgeDataset-V*.csv` | 1.2M people's life spans with Wikidata QIDs and occupation |
+| `wikidata` | `data/wikidata/{items,labels}.jsonl.gz` (from the dump, see below) | people (life spans, awards received, positions held), wars and battles with their participants, countries, awards; IMDb and Baseball-Reference ids for exact linking |
 
 ```bash
 make sources        # list sources, row counts, last sync, whether files changed
@@ -250,14 +251,42 @@ curl -g "http://localhost:4000/timeline/density?from=1800&to=2020&bucket=10&sour
 curl -g "http://localhost:4000/timeline/links?entity=24023"
 ```
 
+### Wikidata from the dump
+
+Wikidata is the hub: it has every person with a Wikipedia article, every
+war, award and country, and it carries the IMDb and Baseball-Reference ids
+that make linking exact. The full JSON dump
+(https://dumps.wikimedia.org/wikidatawiki/entities/, `latest-all.json.gz`,
+100+ GB) is reduced once per release to two small files:
+
+```bash
+# hours for the full dump; decompress outside Python for speed
+pigz -dc latest-all.json.gz | python3 scripts/wikidata_extract.py -
+# or, for a quick look at the first million items
+python3 scripts/wikidata_extract.py latest-all.json.gz --limit 1000000
+make sync-events
+```
+
+`items.jsonl.gz` holds humans, conflicts, countries and awards with their
+dates, identifiers and dated relations (`P166` award received, `P39`
+position held, `P607`/`P710` conflict participation); `labels.jsonl.gz`
+names everything those items refer to. The `wikidata` source then yields
+life spans, award instants, position spans, conflict spans with their
+combatants and participating countries, and country existence spans. Dates
+coarser than a year become `certainty: circa`; Julian-calendar dates are
+flagged in `detail`. `scripts/fixtures/wikidata-mini-dump.json` is an
+eleven-entity slice of the real dump used by the tests.
+
 ### One person, several sources
 
 Hank Aaron arrives from Lahman, IMDB and Wikidata as three entities.
 `make link` (also run automatically after every sync) fills `entity_links`:
-entities sharing a Wikidata QID link with certainty, and people whose name,
-birth year and death year match, and are unique in both sources, link at
-0.9 (0.7 when still alive). Wikidata is the canonical side because QIDs are
-the cross-source key. Events carry `certainty` (`exact`, `circa`, `unknown`)
+entities sharing an external identifier (`entity_identifiers`: IMDb nconst,
+Baseball-Reference id) or a Wikidata QID link with certainty, and people
+whose name, birth year and death year match, and are unique in both
+sources, link at 0.9 (0.7 when still alive). Wikidata is the canonical side
+because QIDs are the cross-source key; the dump source wins over the Kaggle
+extract when both are loaded. Events carry `certainty` (`exact`, `circa`, `unknown`)
 for sources that know their dates are approximate.
 
 ### SQLite features in use

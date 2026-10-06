@@ -96,6 +96,13 @@ WHERE se.entity_kind = 'title' AND pr.category IS NOT NULL
 """
 
 
+# The IMDB ids themselves are the identifiers Wikidata carries as P345.
+IDENTIFIERS = """
+INSERT OR IGNORE INTO stage_identifiers
+SELECT kind, external_id, 'imdb', external_id FROM stage_entities
+"""
+
+
 class ImdbSource(Source):
     slug = "imdb"
     name = "IMDB non-commercial datasets"
@@ -133,6 +140,7 @@ class ImdbSource(Source):
         ctx.conn.execute(TITLE_ENTITIES.format(limit=limit), (min_votes,))
         ctx.conn.execute(TITLE_EVENTS.format(limit=limit), (min_votes,))
         ctx.conn.execute(TITLE_PARTICIPANTS)
+        ctx.conn.execute(IDENTIFIERS)
 
     @staticmethod
     def _min_votes(ctx: SyncContext) -> int:

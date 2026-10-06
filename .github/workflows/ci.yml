@@ -34,8 +34,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: ruff check scripts/ingest scripts/ingest_events.py scripts/test_ingest_events.py scripts/test_search.py
-      - run: ruff format --check scripts/ingest scripts/ingest_events.py scripts/test_ingest_events.py scripts/test_search.py
+      - run: ruff check scripts/ingest scripts/ingest_events.py scripts/wikidata_extract.py scripts/test_ingest_events.py scripts/test_search.py
+      - run: ruff format --check scripts/ingest scripts/ingest_events.py scripts/wikidata_extract.py scripts/test_ingest_events.py scripts/test_search.py
       - name: Migrations apply with the system sqlite3 CLI
         run: |
           sudo apt-get update && sudo apt-get install -y sqlite3

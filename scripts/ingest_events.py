@@ -112,8 +112,8 @@ def cmd_sync(syncer: Syncer, args: argparse.Namespace) -> int:
 def cmd_link(syncer: Syncer) -> int:
     links = syncer.link()
     print(
-        f"{'links':<14}{'ok':<10}{links.by_wikidata:,} by QID, "
-        f"{links.by_name_dates:,} by name and dates"
+        f"{'links':<14}{'ok':<10}{links.by_identifier:,} by identifier, "
+        f"{links.by_wikidata:,} by QID, {links.by_name_dates:,} by name and dates"
     )
     return 0
 

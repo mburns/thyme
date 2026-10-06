@@ -12,6 +12,7 @@ help:
 	@echo "  sources      - List timeline data sources and their sync state"
 	@echo "  sync-events  - Import timeline events from sources whose files changed"
 	@echo "  link         - Rebuild entity links (the same person across sources)"
+	@echo "  wikidata-extract DUMP=... - Reduce a Wikidata JSON dump to data/wikidata/"
 	@echo ""
 	@echo "Build and run:"
 	@echo "  wasm         - Build the WASM component with the custom endpoints"
@@ -50,6 +51,12 @@ sync-events:
 
 link:
 	@python3 scripts/ingest_events.py link
+
+# Reduce a Wikidata JSON dump to data/wikidata/{items,labels}.jsonl.gz.
+# Usage: make wikidata-extract DUMP=path/to/latest-all.json.gz
+wikidata-extract:
+	@test -n "$(DUMP)" || { echo "usage: make wikidata-extract DUMP=latest-all.json.gz"; exit 1; }
+	@python3 scripts/wikidata_extract.py "$(DUMP)"
 
 wasm:
 	@yarn --silent wasm:build

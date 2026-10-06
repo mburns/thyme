@@ -26,7 +26,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 20_000
-CANONICAL_SOURCE = "wikidata_age"
+#: Sources whose entities other sources resolve to, best first. QIDs are the
+#: cross-source key, so the Wikidata dump wins over the Kaggle extract.
+CANONICAL_SOURCES = ("wikidata", "wikidata_age")
 
 
 def iso_date(
@@ -97,6 +99,20 @@ class Participant:
     role: str
 
 
+@dataclass(frozen=True)
+class Identifier:
+    """An external identifier of an entity: ('imdb', 'nm0000008').
+
+    Shared identifiers are how entities from different sources are linked
+    exactly; Wikidata carries IMDb, Baseball-Reference and Olympedia ids.
+    """
+
+    entity_kind: str
+    entity_external_id: str
+    scheme: str
+    value: str
+
+
 @dataclass
 class SyncContext:
     """What an adapter gets while loading: paths, the connection, limits."""
@@ -121,6 +137,7 @@ class SyncResult:
 
 @dataclass
 class LinkResult:
+    by_identifier: int
     by_wikidata: int
     by_name_dates: int
 
@@ -179,11 +196,15 @@ class Source(ABC):
     def participants(self, ctx: SyncContext) -> Iterable[Participant]:
         return ()
 
+    def identifiers(self, ctx: SyncContext) -> Iterable[Identifier]:
+        return ()
+
     def load(self, ctx: SyncContext) -> None:
         """Write this source's rows into the staging tables."""
         _stage_entities(ctx.conn, self.entities(ctx))
         _stage_events(ctx.conn, self.events(ctx))
         _stage_participants(ctx.conn, self.participants(ctx))
+        _stage_identifiers(ctx.conn, self.identifiers(ctx))
 
 
 def read_csv(path: Path, limit: int | None = None) -> Iterator[dict[str, str]]:
@@ -255,7 +276,22 @@ def _stage_participants(conn: sqlite3.Connection, rows: Iterable[Participant]) -
         )
 
 
+def _stage_identifiers(conn: sqlite3.Connection, rows: Iterable[Identifier]) -> None:
+    for batch in _batched(rows, BATCH_SIZE):
+        conn.executemany(
+            "INSERT OR IGNORE INTO stage_identifiers VALUES (?, ?, ?, ?)",
+            [(i.entity_kind, i.entity_external_id, i.scheme, i.value) for i in batch],
+        )
+
+
 STAGE_SCHEMA = """
+CREATE TEMP TABLE stage_identifiers (
+  entity_kind TEXT NOT NULL,
+  entity_external_id TEXT NOT NULL,
+  scheme TEXT NOT NULL,
+  value TEXT NOT NULL,
+  PRIMARY KEY (entity_kind, entity_external_id, scheme, value)
+) WITHOUT ROWID;
 CREATE TEMP TABLE stage_entities (
   external_id TEXT NOT NULL,
   kind TEXT NOT NULL,
@@ -294,6 +330,7 @@ DROP_STAGE = """
 DROP TABLE IF EXISTS stage_entities;
 DROP TABLE IF EXISTS stage_events;
 DROP TABLE IF EXISTS stage_participants;
+DROP TABLE IF EXISTS stage_identifiers;
 """
 
 # The upserts walk the staging tables and probe the real tables through their
@@ -343,10 +380,13 @@ WHERE source_id = ?
   AND external_id NOT IN (SELECT external_id FROM stage_events)
 """
 
+# An entity stays if it owns an event or took part in one (an award that was
+# received, a country that fought).
 DELETE_ORPHAN_ENTITIES = """
 DELETE FROM entities
 WHERE source_id = ?
   AND id NOT IN (SELECT entity_id FROM events WHERE source_id = ?)
+  AND id NOT IN (SELECT entity_id FROM event_participants)
 """
 
 # Participants are fully derived from the source, so they are rebuilt rather
@@ -363,6 +403,32 @@ FROM stage_participants s
 CROSS JOIN events e ON e.source_id = ? AND e.external_id = s.event_external_id
 CROSS JOIN entities n
   ON n.source_id = ? AND n.kind = s.entity_kind AND n.external_id = s.entity_external_id
+"""
+
+# Identifiers are rebuilt per source like participants.
+DELETE_IDENTIFIERS = """
+DELETE FROM entity_identifiers
+WHERE entity_id IN (SELECT id FROM entities WHERE source_id = ?)
+"""
+
+INSERT_IDENTIFIERS = """
+INSERT OR IGNORE INTO entity_identifiers (entity_id, scheme, value)
+SELECT n.id, s.scheme, s.value
+FROM stage_identifiers s
+CROSS JOIN entities n
+  ON n.source_id = ? AND n.kind = s.entity_kind AND n.external_id = s.entity_external_id
+"""
+
+# Two entities from different sources carrying the same (scheme, value)
+# are the same thing; the canonical side is the canonical source's.
+LINK_BY_IDENTIFIER = """
+INSERT OR REPLACE INTO entity_links (entity_id, canonical_id, method, confidence)
+SELECT e.id, c.id, 'identifier', 1.0
+FROM entity_identifiers ei
+JOIN entity_identifiers ci ON ci.scheme = ei.scheme AND ci.value = ei.value
+JOIN entities e ON e.id = ei.entity_id
+JOIN entities c ON c.id = ci.entity_id AND c.source_id = ?
+WHERE e.source_id <> c.source_id
 """
 
 INSERT_DENSITY = """
@@ -600,9 +666,11 @@ class Syncer:
         entities_written = conn.execute(UPSERT_ENTITIES, (sid,)).rowcount
         events_written = conn.execute(UPSERT_EVENTS, (sid, sid)).rowcount
         events_deleted = conn.execute(DELETE_STALE_EVENTS, (sid,)).rowcount
-        conn.execute(DELETE_ORPHAN_ENTITIES, (sid, sid))
         conn.execute(DELETE_PARTICIPANTS, (sid,))
         participants_written = conn.execute(INSERT_PARTICIPANTS, (sid, sid)).rowcount
+        conn.execute(DELETE_ORPHAN_ENTITIES, (sid, sid))
+        conn.execute(DELETE_IDENTIFIERS, (sid,))
+        conn.execute(INSERT_IDENTIFIERS, (sid,))
         conn.execute("DELETE FROM event_density WHERE source_id = ?", (sid,))
         conn.execute(INSERT_DENSITY, (sid,))
         conn.execute("INSERT INTO entities_fts(entities_fts) VALUES ('rebuild')")
@@ -635,31 +703,42 @@ class Syncer:
     def link(self) -> LinkResult:
         """Rebuild ``entity_links``: resolve duplicates to canonical entities.
 
-        The canonical source is Wikidata (QIDs are the cross-source key).
-        Shared QIDs link with certainty; otherwise a person links when name,
-        birth year and death year match and that combination is unique in
-        both sources, so common names never link by accident.
+        The canonical source is Wikidata (QIDs are the cross-source key): the
+        dump when loaded, else the Kaggle age extract. Shared external
+        identifiers (IMDb, Baseball-Reference) and shared QIDs link with
+        certainty; otherwise a person links when name, birth year and death
+        year match and that combination is unique in both sources, so common
+        names never link by accident.
         """
-        row = self.conn.execute(
-            "SELECT id FROM sources WHERE slug = ?", (CANONICAL_SOURCE,)
-        ).fetchone()
-        if row is None:
-            return LinkResult(0, 0)
-        canonical = int(row[0])
+        canonical: int | None = None
+        for slug in CANONICAL_SOURCES:
+            row = self.conn.execute(
+                "SELECT id FROM sources WHERE slug = ? "
+                "AND EXISTS (SELECT 1 FROM entities WHERE source_id = sources.id)",
+                (slug,),
+            ).fetchone()
+            if row is not None:
+                canonical = int(row[0])
+                break
+        if canonical is None:
+            return LinkResult(0, 0, 0)
         self.conn.execute("DELETE FROM entity_links")
         # cursor.rowcount is -1 for statements that start with WITH, so ask
         # SQLite directly.
+        self.conn.execute(LINK_BY_IDENTIFIER, (canonical,))
+        by_identifier = int(self.conn.execute("SELECT changes()").fetchone()[0])
         self.conn.execute(LINK_BY_WIKIDATA, (canonical,))
         by_wikidata = int(self.conn.execute("SELECT changes()").fetchone()[0])
         self.conn.execute(LINK_BY_NAME_DATES, (canonical,))
         by_name = int(self.conn.execute("SELECT changes()").fetchone()[0])
         self.conn.commit()
         logger.info(
-            "linked %s entities by QID and %s by name and dates",
+            "linked %s entities by identifier, %s by QID and %s by name and dates",
+            f"{by_identifier:,}",
             f"{by_wikidata:,}",
             f"{by_name:,}",
         )
-        return LinkResult(by_wikidata, by_name)
+        return LinkResult(by_identifier, by_wikidata, by_name)
 
     def _record_files(self, source: Source, source_id: int) -> None:
         self.conn.execute("DELETE FROM source_files WHERE source_id = ?", (source_id,))

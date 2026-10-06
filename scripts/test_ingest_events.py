@@ -8,6 +8,8 @@ Run from the repository root:
 
 from __future__ import annotations
 
+import gzip
+import json
 import logging
 import os
 import sqlite3
@@ -16,6 +18,7 @@ import textwrap
 import unittest
 from pathlib import Path
 
+import wikidata_extract
 from ingest import SOURCES, Source, Syncer
 
 # The failure test deliberately triggers an exception log.
@@ -23,6 +26,10 @@ logging.disable(logging.CRITICAL)
 
 REPO = Path(__file__).resolve().parent.parent
 MIGRATIONS = sorted((REPO / "traildepot" / "migrations").glob("U*.sql"))
+# Eleven real entities in dump format: Brando, Aaron, Washington, Aristotle,
+# World War II, the Nobel Prize in Literature, the Academy Award for Best
+# Actor, the United States, and three items only referred to.
+WIKIDATA_DUMP = REPO / "scripts" / "fixtures" / "wikidata-mini-dump.json"
 
 PEOPLE = """\
 ID,playerID,birthYear,birthMonth,birthDay,birthCity,birthCountry,birthState,deathYear,deathMonth,deathDay,deathCountry,deathState,deathCity,nameFirst,nameLast,nameGiven,weight,height,bats,throws,debut,bbrefID,finalGame,retroID
@@ -70,7 +77,7 @@ Id,Name,Short description,Gender,Country,Occupation,Birth year,Death year,Manner
 Q23,George Washington,1st president of the United States,Male,United States of America,Politician,1732,1799,natural causes,67
 Q868,Aristotle,Greek philosopher,Male,Greece,Philosopher,-384,-322,,62
 Q42,Douglas Adams,English writer,Male,United Kingdom,Artist,1952,2001,natural causes,49
-Q214413,Hank Aaron,American baseball player,Male,United States of America,Athlete,1934,2021,natural causes,86
+Q215777,Hank Aaron,American baseball player,Male,United States of America,Athlete,1934,2021,natural causes,86
 Q34012,Marlon Brando,American actor,Male,United States of America,Artist,1924,2004,natural causes,80
 Q1,John Smith,English soldier,Male,England,Explorer,1580,1631,,51
 Q2,John Smith,Another John Smith,Male,England,Explorer,1580,1631,,51
@@ -109,6 +116,7 @@ class IngestTest(unittest.TestCase):
         )
         write(self.data / "sports" / "olympic_events" / "athlete_events.csv", OLYMPICS)
         write(self.data / "wiki" / "AgeDataset-V1.csv", WIKI)
+        wikidata_extract.run(str(WIKIDATA_DUMP), self.data / "wikidata", None, 10**6)
         self.conn = make_db(root / "main.db")
         self.conn.executescript(
             """
@@ -166,6 +174,12 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(self.events_for("wikidata_age"), {"life": 7})
         # Titles under the vote threshold and people without a birth year are left out.
         self.assertEqual(self.events_for("imdb"), {"release": 1, "run": 1, "life": 2})
+        wikidata = self.events_for("wikidata")
+        self.assertEqual(
+            {k: v for k, v in wikidata.items() if k != "award"},
+            {"life": 4, "conflict": 1, "exists": 1, "established": 1},
+        )
+        self.assertGreaterEqual(wikidata["award"], 1)
 
     def test_dates_and_precision(self) -> None:
         self.sync_all()
@@ -329,7 +343,8 @@ class SqliteFeaturesTest(IngestTest):
         self.sync_all()
         rows = self.conn.execute(
             "SELECT precision, start_julian IS NOT NULL, end_julian IS NOT NULL FROM events "
-            "WHERE external_id IN ('aaronha01:life', 'Q23:life') ORDER BY precision"
+            "WHERE external_id IN ('aaronha01:life', 'Q23:life') AND source_id IN "
+            "(SELECT id FROM sources WHERE slug IN ('lahman', 'wikidata_age')) ORDER BY precision"
         ).fetchall()
         self.assertEqual(rows, [("day", 1, 1), ("year", 0, 0)])
         days = self.conn.execute(
@@ -341,7 +356,7 @@ class SqliteFeaturesTest(IngestTest):
     def test_trigram_substring_search(self) -> None:
         self.sync_all()
         hits = self.conn.execute(
-            "SELECT entities.name FROM entities_fts JOIN entities ON entities.id = entities_fts.rowid "
+            "SELECT DISTINCT entities.name FROM entities_fts JOIN entities ON entities.id = entities_fts.rowid "
             "WHERE entities_fts MATCH '\"ARISTO\"'"
         ).fetchall()
         self.assertEqual(hits, [("Aristotle",)])
@@ -428,7 +443,35 @@ class ScaleModelTest(IngestTest):
     def test_entities_link_across_sources(self) -> None:
         self.sync_all()
         links = self.syncer.link()
-        self.assertEqual((links.by_wikidata, links.by_name_dates), (0, 2))
+        # IMDB's Brando and Lahman's Aaron carry the ids Wikidata has (P345,
+        # P1825); the Kaggle extract's rows share QIDs with the dump.
+        self.assertEqual(
+            (links.by_identifier, links.by_wikidata, links.by_name_dates), (2, 4, 0)
+        )
+        rows = self.conn.execute(
+            "SELECT dup.name, src.slug, canon.wikidata_id, entity_links.method, entity_links.confidence "
+            "FROM entity_links "
+            "JOIN entities dup ON dup.id = entity_links.entity_id "
+            "JOIN sources src ON src.id = dup.source_id "
+            "JOIN entities canon ON canon.id = entity_links.canonical_id "
+            "JOIN sources cs ON cs.id = canon.source_id "
+            "WHERE src.slug IN ('imdb', 'lahman') AND cs.slug = 'wikidata' ORDER BY 1"
+        ).fetchall()
+        self.assertEqual(
+            rows,
+            [
+                ("Hank Aaron", "lahman", "Q215777", "identifier", 1.0),
+                ("Marlon Brando", "imdb", "Q34012", "identifier", 1.0),
+            ],
+        )
+
+    def test_name_dates_fallback_when_only_the_kaggle_extract_is_loaded(self) -> None:
+        for slug in ("lahman", "imdb", "wikidata_age"):
+            self.syncer.sync(SOURCES[slug])
+        links = self.syncer.link()
+        self.assertEqual(
+            (links.by_identifier, links.by_wikidata, links.by_name_dates), (0, 0, 2)
+        )
         rows = self.conn.execute(
             "SELECT dup.name, src.slug, canon.wikidata_id, entity_links.method, entity_links.confidence "
             "FROM entity_links "
@@ -440,7 +483,7 @@ class ScaleModelTest(IngestTest):
         self.assertEqual(
             rows,
             [
-                ("Hank Aaron", "lahman", "Q214413", "name_dates", 0.9),
+                ("Hank Aaron", "lahman", "Q215777", "name_dates", 0.9),
                 ("Marlon Brando", "imdb", "Q34012", "name_dates", 0.9),
             ],
         )
@@ -459,9 +502,88 @@ class ScaleModelTest(IngestTest):
         self.sync_all()
         self.syncer.link()
         self.syncer.link()
-        self.assertEqual(self.count("SELECT COUNT(*) FROM entity_links"), 2)
-        self.conn.execute("DELETE FROM entities WHERE wikidata_id = 'Q214413'")
-        self.assertEqual(self.count("SELECT COUNT(*) FROM entity_links"), 1)
+        self.assertEqual(self.count("SELECT COUNT(*) FROM entity_links"), 6)
+        self.conn.execute("DELETE FROM entities WHERE wikidata_id = 'Q215777'")
+        self.assertEqual(self.count("SELECT COUNT(*) FROM entity_links"), 4)
+
+
+class WikidataTest(IngestTest):
+    """The dump extractor and the wikidata source on real entities."""
+
+    def test_extract_keeps_selected_classes_and_all_labels(self) -> None:
+        items = {
+            json.loads(line)["id"]: json.loads(line)
+            for line in gzip.open(self.data / "wikidata" / "items.jsonl.gz", "rt")
+        }
+        self.assertEqual(
+            {q: i["kind"] for q, i in items.items()},
+            {
+                "Q34012": "person",
+                "Q215777": "person",
+                "Q23": "person",
+                "Q868": "person",
+                "Q362": "conflict",
+                "Q37922": "award",
+                "Q30": "country",
+            },
+        )
+        # The Oscar category is not an instance of an award class, so it is
+        # not selected as an item; people's P166 references still name it
+        # through the labels file.
+        self.assertEqual(items["Q34012"]["imdb"], "nm0000008")
+        # Raw value; the adapter strips the letter directory to match Lahman.
+        self.assertEqual(items["Q215777"]["bbref"], "a/aaronha01")
+        self.assertEqual(items["Q868"]["birth"], {"year": -384, "julian": True})
+        self.assertEqual(items["Q362"]["start"], {"year": 1939, "month": 9, "day": 1})
+        labels = sum(
+            1 for _ in gzip.open(self.data / "wikidata" / "labels.jsonl.gz", "rt")
+        )
+        self.assertEqual(labels, 11)
+
+    def test_wikidata_events_participants_and_identifiers(self) -> None:
+        self.syncer.sync(SOURCES["wikidata"])
+        life = self.conn.execute(
+            "SELECT start_date, end_date, precision, certainty, category FROM v_events "
+            "WHERE source = 'wikidata' AND kind = 'life' AND entity_name = 'Marlon Brando'"
+        ).fetchone()
+        self.assertEqual(
+            life, ("1924-04-03", "2004-07-01", "day", "exact", "film actor")
+        )
+        aristotle = self.conn.execute(
+            "SELECT start_year, end_year, detail ->> 'julian' FROM v_events "
+            "WHERE source = 'wikidata' AND entity_name = 'Aristotle'"
+        ).fetchone()
+        self.assertEqual(aristotle, (-384, -322, 1))
+        war = self.conn.execute(
+            "SELECT start_date, end_date, span FROM v_events WHERE kind = 'conflict'"
+        ).fetchone()
+        self.assertEqual(war, ("1939-09-01", "1945-09-02", 1))
+        participants = self.conn.execute(
+            "SELECT entities.kind, entities.name FROM event_participants "
+            "JOIN events ON events.id = event_participants.event_id "
+            "JOIN entities ON entities.id = event_participants.entity_id "
+            "WHERE events.external_id = 'Q362:conflict' ORDER BY 2"
+        ).fetchall()
+        self.assertIn(("country", "United States"), participants)
+        oscar = self.conn.execute(
+            "SELECT events.label, events.start_year, entities.name FROM event_participants "
+            "JOIN events ON events.id = event_participants.event_id "
+            "JOIN entities ON entities.id = event_participants.entity_id "
+            "WHERE events.kind = 'award' ORDER BY events.start_year LIMIT 1"
+        ).fetchone()
+        self.assertEqual(
+            oscar,
+            ("Academy Award for Best Actor", 1955, "Academy Award for Best Actor"),
+        )
+        ids = self.conn.execute(
+            "SELECT scheme, value FROM entity_identifiers JOIN entities ON entities.id = entity_id "
+            "WHERE entities.name = 'Hank Aaron' ORDER BY 1"
+        ).fetchall()
+        self.assertEqual(ids, [("bbref", "aaronha01"), ("imdb", "nm0007459")])
+        url = self.conn.execute(
+            "SELECT url FROM entities WHERE wikidata_id = 'Q362'"
+        ).fetchone()[0]
+        self.assertEqual(url, "https://en.wikipedia.org/wiki/World_War_II")
 
 
 if __name__ == "__main__":

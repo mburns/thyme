@@ -16,6 +16,7 @@ from pathlib import Path
 from ingest.core import (
     Entity,
     Event,
+    Identifier,
     Participant,
     Source,
     SyncContext,
@@ -280,3 +281,9 @@ class LahmanSource(Source):
                     entity_external_id=a["playerID"],
                     role="player",
                 )
+
+    def identifiers(self, ctx: SyncContext) -> Iterable[Identifier]:
+        """Baseball-Reference ids, which Wikidata carries as P1825."""
+        for p in self._people(ctx):
+            if p.get("bbrefID"):
+                yield Identifier("person", p["playerID"], "bbref", p["bbrefID"])

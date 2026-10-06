@@ -10,6 +10,7 @@ from ingest.core import Source
 from ingest.sources.imdb import ImdbSource
 from ingest.sources.lahman import LahmanSource
 from ingest.sources.olympics import OlympicsSource
+from ingest.sources.wikidata import WikidataSource
 from ingest.sources.wikidata_age import WikidataAgeSource
 
 SOURCES: dict[str, Source] = {
@@ -19,6 +20,7 @@ SOURCES: dict[str, Source] = {
         LahmanSource(),
         OlympicsSource(),
         WikidataAgeSource(),
+        WikidataSource(),
     )
 }
 
